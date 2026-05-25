@@ -8,6 +8,10 @@ type AuthState = {
   register: (data: RegisterPayload) => Promise<void>;
   logout: () => void;
   refresh: () => Promise<void>;
+  /** Проверяет наличие права у текущего пользователя.
+   *  super_admin — всегда true; admin с permissions=null — true (legacy);
+   *  admin с конкретным списком — perm должен быть в нём; user/null — false. */
+  hasPerm: (perm: string) => boolean;
 };
 
 type RegisterPayload = {
@@ -65,8 +69,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }, []);
 
+  const hasPerm = useCallback((perm: string): boolean => {
+    if (!user) return false;
+    if (user.role === "super_admin") return true;
+    if (user.role !== "admin") return false;
+    if (user.permissions === null) return true; // legacy admin — all rights
+    return user.permissions.includes(perm);
+  }, [user]);
+
   return (
-    <AuthCtx.Provider value={{ user, loading, login, register, logout, refresh }}>
+    <AuthCtx.Provider value={{ user, loading, login, register, logout, refresh, hasPerm }}>
       {children}
     </AuthCtx.Provider>
   );

@@ -79,6 +79,29 @@ def require_admin_or_super(user: User = Depends(get_current_user)) -> User:
     return user
 
 
+def require_perm(perm: str):
+    """Factory: возвращает Depends, проверяющий наличие гранулярного права у администратора.
+
+    Правила:
+    - super_admin → всегда проходит.
+    - admin с permissions=None → «старый» аккаунт, имеет все права (обратная совместимость).
+    - admin с конкретным списком → проверяем наличие perm в списке.
+    - user → 403 (require_admin_or_super отработает раньше).
+    """
+    def _dep(user: User = Depends(require_admin_or_super)) -> User:
+        if user.role == UserRole.super_admin.value:
+            return user
+        if user.permissions is None:
+            return user
+        if perm not in (user.permissions or []):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"У вас нет права: {perm}",
+            )
+        return user
+    return _dep
+
+
 def require_rooftop_access(
     rooftop_id: int,
     permission: str = "can_manage_movies",

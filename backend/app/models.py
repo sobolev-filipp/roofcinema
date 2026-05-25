@@ -1,7 +1,7 @@
 from datetime import datetime
 from enum import Enum
 
-from sqlalchemy import String, Integer, ForeignKey, DateTime, Boolean, Numeric, Text
+from sqlalchemy import JSON, String, Integer, ForeignKey, DateTime, Boolean, Numeric, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
@@ -11,6 +11,25 @@ class UserRole(str, Enum):
     super_admin = "super_admin"
     admin = "admin"
     user = "user"
+
+
+class AdminPermission(str, Enum):
+    """Гранулярные права приглашённого администратора.
+    super_admin всегда имеет все права; admin с permissions=None считается «старым» — тоже все права.
+    admin с конкретным списком — только выбранные права."""
+    manage_rooftops         = "manage_rooftops"           # создавать/редактировать крыши
+    manage_movies           = "manage_movies"             # добавлять/редактировать фильмы
+    manage_screenings       = "manage_screenings"         # создавать/редактировать показы
+    manage_bookings         = "manage_bookings"           # работать с бронированиями
+    manage_transfers        = "manage_transfers"          # делать переносы броней
+    manage_cancellations    = "manage_cancellations"      # осуществлять отмены
+    manual_booking          = "manual_booking"            # добавлять брони вручную
+    manage_receipts         = "manage_receipts"           # работать с чеками
+    manage_refunds          = "manage_refunds"            # работать с возвратами
+    manage_payout_templates = "manage_payout_templates"   # реквизиты для оплаты
+    manage_templates        = "manage_templates"          # шаблоны сообщений
+    check_in                = "check_in"                  # раздел «Вход» (QR-сканер)
+    manage_admins           = "manage_admins"             # просмотр/редактирование прав других админов
 
 
 def utcnow() -> datetime:
@@ -36,6 +55,7 @@ class User(Base):
     is_email_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     email_verified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     requires_initial_setup: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    permissions: Mapped[list | None] = mapped_column(JSON, nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 
     home_city = relationship("City", foreign_keys=[home_city_id])
@@ -314,6 +334,12 @@ class Booking(Base):
         cascade="all, delete-orphan",
         order_by="BookingAttendee.id",
     )
+    refund_request = relationship(
+        "RefundRequest",
+        back_populates="booking",
+        uselist=False,   # one-to-one (booking_id unique)
+        cascade="all, delete-orphan",
+    )
 
 
 class BookingItem(Base):
@@ -365,7 +391,7 @@ class RefundRequest(Base):
     filled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
-    booking = relationship("Booking", foreign_keys=[booking_id])
+    booking = relationship("Booking", back_populates="refund_request")
 
 
 class MessageTemplateKind(str, Enum):
@@ -474,6 +500,10 @@ class RooftopAdminInvite(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     accepted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    permissions: Mapped[list | None] = mapped_column(JSON, nullable=True, default=None)
+    # Список дополнительных крыш (сверх rooftop_id). Если задан — принимаются
+    # RooftopAdmin-ссылки для ВСЕХ ids из этого списка (rooftop_id включён автоматически).
+    target_rooftop_ids: Mapped[list | None] = mapped_column(JSON, nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 
     rooftop = relationship("Rooftop", back_populates="invites")

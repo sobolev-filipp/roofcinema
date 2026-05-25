@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..deps import require_admin_or_super
+from ..deps import require_admin_or_super, require_perm
 from ..models import MessageTemplate
 from ..schemas import (
     ALLOWED_TEMPLATE_KINDS,
@@ -56,7 +56,7 @@ def list_templates(kind: str | None = None, db: Session = Depends(get_db)):
     return q.order_by(MessageTemplate.kind, MessageTemplate.is_default.desc(), MessageTemplate.id).all()
 
 
-@router.post("", response_model=MessageTemplateOut, status_code=201, dependencies=[Depends(require_admin_or_super)])
+@router.post("", response_model=MessageTemplateOut, status_code=201, dependencies=[Depends(require_perm("manage_templates"))])
 def create_template(payload: MessageTemplateIn, db: Session = Depends(get_db)):
     _ensure_kind(payload.kind)
     t = MessageTemplate(
@@ -74,7 +74,7 @@ def create_template(payload: MessageTemplateIn, db: Session = Depends(get_db)):
     return t
 
 
-@router.patch("/{template_id}", response_model=MessageTemplateOut, dependencies=[Depends(require_admin_or_super)])
+@router.patch("/{template_id}", response_model=MessageTemplateOut, dependencies=[Depends(require_perm("manage_templates"))])
 def update_template(template_id: int, payload: MessageTemplateUpdateIn, db: Session = Depends(get_db)):
     t = db.get(MessageTemplate, template_id)
     if not t:
@@ -94,7 +94,7 @@ def update_template(template_id: int, payload: MessageTemplateUpdateIn, db: Sess
     return t
 
 
-@router.delete("/{template_id}", status_code=204, dependencies=[Depends(require_admin_or_super)])
+@router.delete("/{template_id}", status_code=204, dependencies=[Depends(require_perm("manage_templates"))])
 def delete_template(template_id: int, db: Session = Depends(get_db)):
     t = db.get(MessageTemplate, template_id)
     if not t:
@@ -106,7 +106,7 @@ def delete_template(template_id: int, db: Session = Depends(get_db)):
 @router.post(
     "/{template_id}/set-default",
     response_model=MessageTemplateOut,
-    dependencies=[Depends(require_admin_or_super)],
+    dependencies=[Depends(require_perm("manage_templates"))],
 )
 def set_default(template_id: int, db: Session = Depends(get_db)):
     t = db.get(MessageTemplate, template_id)

@@ -36,6 +36,7 @@ class UserOut(BaseModel):
     balance: float = 0
     is_email_verified: bool = False
     requires_initial_setup: bool = False
+    permissions: list[str] | None = None
     created_at: datetime
 
 
@@ -512,6 +513,18 @@ class ClaimInfoOut(BaseModel):
     claimed_at: datetime | None = None
 
 
+class RefundBasicOut(BaseModel):
+    """Минимальная информация о запросе возврата — для отображения пользователю на странице брони."""
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    status: str
+    amount: float
+    payout_token: str   # → /refund/{token}
+    link_sent_at: datetime | None = None
+    filled_at: datetime | None = None
+    completed_at: datetime | None = None
+
+
 class BookingOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
@@ -538,6 +551,15 @@ class BookingOut(BaseModel):
     receipts: list[PaymentReceiptOut] = []
     attendees: list[BookingAttendeeOut] = []
     total_guests: int = 0  # сумма qty×capacity по items, заполняется в роутере
+    refund_request: RefundBasicOut | None = None  # если есть активный запрос возврата
+
+
+class InviteCreateIn(BaseModel):
+    """Тело запроса при создании приглашения. permissions=None → все права (как super_admin задумал)."""
+    permissions: list[str] | None = None
+    # Для глобального приглашения из раздела «Администраторы»: список крыш.
+    # Первая используется как rooftop_id (FK), остальные — через target_rooftop_ids.
+    rooftop_ids: list[int] | None = Field(default=None, description="Список крыш для глобального инвайта")
 
 
 class InviteOut(BaseModel):
@@ -549,4 +571,32 @@ class InviteOut(BaseModel):
     expires_at: datetime
     accepted_at: datetime | None = None
     revoked_at: datetime | None = None
+    permissions: list[str] | None = None
+    target_rooftop_ids: list[int] | None = None
     created_at: datetime
+
+
+# === Управление администраторами ===
+
+class AdminRooftopLink(BaseModel):
+    rooftop_id: int
+    rooftop_name: str
+    city_id: int
+    city_name: str
+
+
+class AdminUserOut(BaseModel):
+    """Администратор в списке управления — с правами и привязанными крышами."""
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    email: str
+    full_name: str
+    permissions: list[str] | None = None
+    rooftops: list[AdminRooftopLink] = []
+    created_at: datetime
+
+
+class AdminPermissionsUpdateIn(BaseModel):
+    permissions: list[str] | None = Field(
+        description="null = все права (legacy); [] = без прав; [...] = конкретный список"
+    )

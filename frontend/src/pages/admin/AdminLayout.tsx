@@ -1,39 +1,60 @@
 import { useEffect, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { api } from "../../api";
+import { useAuth } from "../../auth";
 
-const tabs = [
-  { to: "/admin/cities",      label: "Города", key: "cities" },
-  { to: "/admin/rooftops",    label: "Крыши", key: "rooftops" },
-  { to: "/admin/movies",      label: "Фильмы", key: "movies" },
-  { to: "/admin/screenings",  label: "Показы", key: "screenings" },
-  { to: "/admin/bookings",    label: "Бронирования", key: "bookings" },
-  { to: "/admin/manual-booking", label: "+ Бронь вручную", key: "manual" },
-  { to: "/admin/receipts",    label: "Чеки", key: "receipts" },
-  { to: "/admin/refunds",     label: "Возвраты", key: "refunds" },
-  { to: "/admin/payout-templates", label: "Реквизиты", key: "payout" },
-  { to: "/admin/templates",   label: "Шаблоны", key: "templates" },
-];
+/** perm=undefined → таб виден всем администраторам (super_admin + admin с любыми правами).
+ *  perm=string   → скрывается для admin, у которых нет этого права.
+ *  super_admin видит все табы всегда. */
+const ALL_TABS = [
+  { to: "/admin/cities",           label: "Города",         key: "cities",    perm: undefined },
+  { to: "/admin/rooftops",         label: "Крыши",          key: "rooftops",  perm: "manage_rooftops" },
+  { to: "/admin/movies",           label: "Фильмы",         key: "movies",    perm: "manage_movies" },
+  { to: "/admin/screenings",       label: "Показы",         key: "screenings",perm: "manage_screenings" },
+  { to: "/admin/bookings",         label: "Бронирования",   key: "bookings",  perm: "manage_bookings" },
+  { to: "/admin/manual-booking",   label: "+ Бронь вручную",key: "manual",    perm: "manual_booking" },
+  { to: "/admin/receipts",         label: "Чеки",           key: "receipts",  perm: "manage_receipts" },
+  { to: "/admin/refunds",          label: "Возвраты",       key: "refunds",   perm: "manage_refunds" },
+  { to: "/admin/payout-templates", label: "Реквизиты",      key: "payout",    perm: "manage_payout_templates" },
+  { to: "/admin/templates",        label: "Шаблоны",        key: "templates", perm: "manage_templates" },
+  { to: "/admin/check-in",         label: "🎟 Вход",        key: "checkin",   perm: "check_in" },
+  { to: "/admin/admins",           label: "Администраторы", key: "admins",    perm: "manage_admins" },
+] as const;
 
 export default function AdminLayout() {
+  const { hasPerm } = useAuth();
+  const tabs = ALL_TABS.filter((t) => t.perm === undefined || hasPerm(t.perm));
+  const canSeeReceipts = hasPerm("manage_receipts");
+  const canSeeRefunds = hasPerm("manage_refunds");
   const [pendingReceipts, setPendingReceipts] = useState<number>(0);
+  const [pendingRefunds, setPendingRefunds] = useState<number>(0);
 
   useEffect(() => {
     let alive = true;
     async function refresh() {
       try {
-        const r = await api.get<{ count: number }>("/api/admin/receipts/pending-count");
-        if (alive) setPendingReceipts(r.count || 0);
+        const [receipts, refunds] = await Promise.all([
+          canSeeReceipts
+            ? api.get<{ count: number }>("/api/admin/receipts/pending-count")
+            : Promise.resolve({ count: 0 }),
+          canSeeRefunds
+            ? api.get<{ count: number }>("/api/admin/refund-requests/pending-count")
+            : Promise.resolve({ count: 0 }),
+        ]);
+        if (alive) {
+          setPendingReceipts(receipts.count || 0);
+          setPendingRefunds(refunds.count || 0);
+        }
       } catch {
-        /* тихо игнорируем — счётчик не критичен */
+        /* счётчики не критичны */
       }
     }
     refresh();
-    const t = setInterval(refresh, 30_000);  // обновляем раз в 30 секунд
+    const t = setInterval(refresh, 15_000);  // каждые 15 секунд
     const onFocus = () => refresh();
     window.addEventListener("focus", onFocus);
     return () => { alive = false; clearInterval(t); window.removeEventListener("focus", onFocus); };
-  }, []);
+  }, [canSeeReceipts, canSeeRefunds]); // eslint-disable-line
 
   return (
     <div className="container">
@@ -49,6 +70,11 @@ export default function AdminLayout() {
             {t.key === "receipts" && pendingReceipts > 0 && (
               <span className="admin-tab-badge" title={`Чеков на проверке: ${pendingReceipts}`}>
                 {pendingReceipts}
+              </span>
+            )}
+            {t.key === "refunds" && pendingRefunds > 0 && (
+              <span className="admin-tab-badge" title={`Незавершённых возвратов: ${pendingRefunds}`}>
+                {pendingRefunds}
               </span>
             )}
           </NavLink>

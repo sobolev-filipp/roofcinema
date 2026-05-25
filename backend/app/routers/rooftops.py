@@ -7,8 +7,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload
 
 from ..db import get_db
-from ..deps import get_current_user, get_current_user_optional, require_super_admin
+from ..deps import get_current_user, get_current_user_optional, require_perm, require_super_admin
 from ..models import (
+    AdminPermission,
     Booking,
     BookingStatus,
     City,
@@ -19,7 +20,7 @@ from ..models import (
     User,
     UserRole,
 )
-from ..schemas import InviteOut, RooftopIn, RooftopOut, RooftopPublicOut, RooftopUpdateIn
+from ..schemas import InviteCreateIn, InviteOut, RooftopIn, RooftopOut, RooftopPublicOut, RooftopUpdateIn
 
 router = APIRouter(prefix="/api/rooftops", tags=["rooftops"])
 
@@ -144,7 +145,7 @@ def create_rooftop(payload: RooftopIn, db: Session = Depends(get_db)):
     return rooftop
 
 
-@router.patch("/{rooftop_id}", response_model=RooftopOut, dependencies=[Depends(require_super_admin)])
+@router.patch("/{rooftop_id}", response_model=RooftopOut, dependencies=[Depends(require_perm("manage_rooftops"))])
 def update_rooftop(rooftop_id: int, payload: RooftopUpdateIn, db: Session = Depends(get_db)):
     rooftop = db.get(Rooftop, rooftop_id)
     if not rooftop:
@@ -170,17 +171,24 @@ def delete_rooftop(rooftop_id: int, db: Session = Depends(get_db)):
 @router.post("/{rooftop_id}/invites", response_model=InviteOut, status_code=201)
 def create_invite(
     rooftop_id: int,
+    payload: InviteCreateIn | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(require_super_admin),
 ):
     rooftop = db.get(Rooftop, rooftop_id)
     if not rooftop:
         raise HTTPException(status_code=404, detail="Крыша не найдена")
+    # Нормализуем список прав: убираем дубли и невалидные строки
+    perms = None
+    if payload and payload.permissions is not None:
+        valid = {p.value for p in AdminPermission}
+        perms = [p for p in payload.permissions if p in valid]
     invite = RooftopAdminInvite(
         rooftop_id=rooftop_id,
         token=secrets.token_urlsafe(32),
         created_by_id=user.id,
         expires_at=datetime.utcnow() + timedelta(days=7),
+        permissions=perms,
     )
     db.add(invite)
     db.commit()
@@ -226,11 +234,23 @@ def accept_invite(token: str, db: Session = Depends(get_db), user: User = Depend
         .filter(RooftopAdmin.user_id == user.id, RooftopAdmin.rooftop_id == invite.rooftop_id)
         .first()
     )
-    if not existing:
-        link = RooftopAdmin(user_id=user.id, rooftop_id=invite.rooftop_id)
-        db.add(link)
+    # Определяем, для каких крыш создавать RooftopAdmin-связи
+    rooftop_ids_to_link = (
+        invite.target_rooftop_ids if invite.target_rooftop_ids else [invite.rooftop_id]
+    )
+    for rid in rooftop_ids_to_link:
+        exists = (
+            db.query(RooftopAdmin)
+            .filter(RooftopAdmin.user_id == user.id, RooftopAdmin.rooftop_id == rid)
+            .first()
+        )
+        if not exists:
+            db.add(RooftopAdmin(user_id=user.id, rooftop_id=rid))
+
     if user.role == UserRole.user.value:
         user.role = UserRole.admin.value
+    # Копируем права из приглашения (None → всё разрешено по умолчанию)
+    user.permissions = invite.permissions
     invite.accepted_at = datetime.utcnow()
     invite.accepted_by_id = user.id
     db.commit()

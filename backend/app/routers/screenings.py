@@ -5,7 +5,7 @@ from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from ..db import get_db
-from ..deps import require_admin_or_super
+from ..deps import require_admin_or_super, require_perm
 from ..models import (
     Booking,
     BookingItem,
@@ -128,7 +128,7 @@ def _normalize_naive(dt: datetime | None) -> datetime | None:
     return dt.replace(tzinfo=None) if dt is not None else None
 
 
-@router.post("", response_model=ScreeningOut, status_code=201, dependencies=[Depends(require_admin_or_super)])
+@router.post("", response_model=ScreeningOut, status_code=201, dependencies=[Depends(require_perm("manage_screenings"))])
 def create_screening(payload: ScreeningIn, db: Session = Depends(get_db)):
     if not db.get(Movie, payload.movie_id):
         raise HTTPException(status_code=400, detail="Фильм не найден")
@@ -148,7 +148,7 @@ def create_screening(payload: ScreeningIn, db: Session = Depends(get_db)):
     return fresh
 
 
-@router.patch("/{screening_id}", response_model=ScreeningOut, dependencies=[Depends(require_admin_or_super)])
+@router.patch("/{screening_id}", response_model=ScreeningOut, dependencies=[Depends(require_perm("manage_screenings"))])
 def update_screening(screening_id: int, payload: ScreeningUpdateIn, db: Session = Depends(get_db)):
     screening = db.get(Screening, screening_id)
     if not screening:
@@ -167,7 +167,7 @@ def update_screening(screening_id: int, payload: ScreeningUpdateIn, db: Session 
     return fresh
 
 
-@router.delete("/{screening_id}", status_code=204, dependencies=[Depends(require_admin_or_super)])
+@router.delete("/{screening_id}", status_code=204, dependencies=[Depends(require_perm("manage_screenings"))])
 def delete_screening(screening_id: int, db: Session = Depends(get_db)):
     screening = db.get(Screening, screening_id)
     if not screening:

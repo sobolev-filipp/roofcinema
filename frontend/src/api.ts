@@ -63,6 +63,7 @@ export type User = {
   balance: number;
   is_email_verified: boolean;
   requires_initial_setup: boolean;
+  permissions: string[] | null;
   created_at: string;
 };
 
@@ -346,6 +347,44 @@ export type ClaimInfo = {
   claimed_at: string | null;
 };
 
+// === Возврат средств (для страницы брони пользователя) ===
+
+export type RefundBasic = {
+  id: number;
+  status: "created" | "filled" | "completed";
+  amount: number;
+  payout_token: string;   // → /refund/{token}
+  link_sent_at: string | null;
+  filled_at: string | null;
+  completed_at: string | null;
+};
+
+// === Check-in (Этап F) ===
+
+export type CheckInInfo = {
+  kind: "booking" | "attendee";
+  booking_id: number;
+  attendee_id: number | null;
+  full_name: string;
+  guests_count: number;
+  movie_title: string;
+  screening_id: number;
+  screening_starts_at_iso: string;
+  screening_starts_at_fmt: string;
+  rooftop_name: string;
+  booking_status: string;
+  already_attended: boolean;
+  can_check_in: boolean;
+  reason: string | null;
+};
+
+export type CheckInConfirmOut = {
+  ok: boolean;
+  booking_id: number;
+  attendee_id: number | null;
+  already_attended: boolean;
+};
+
 export type Booking = {
   id: number;
   user_id: number | null;
@@ -371,4 +410,5 @@ export type Booking = {
   receipts: PaymentReceipt[];
   attendees: BookingAttendee[];
   total_guests: number;
+  refund_request: RefundBasic | null;
 };

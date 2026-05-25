@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#e50914"/>
+  <!-- Крыша/треугольник -->
+  <polygon points="256,96 80,240 432,240" fill="#fff" opacity="0.15"/>
+  <!-- Буква М (кино) -->
+  <path fill="#fff" d="M128 200h64l64 100 64-100h64v160h-48V288l-56 90h-48l-56-90v72h-48z"/>
+</svg>

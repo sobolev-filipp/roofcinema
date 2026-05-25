@@ -58,9 +58,12 @@ export default function BookingPage() {
   const isPausedForReceipt = isWaiting && pendingReceipt !== null;
 
   async function cancel() {
+    const wasPaid = booking.status === "paid" || booking.status === "paid_by_balance";
     const ok = await confirm({
       title: "Отменить бронь?",
-      message: "Места освободятся. Если оплата уже была — возврат запросите у организатора.",
+      message: wasPaid
+        ? "Места освободятся. Так как бронь оплачена, мы автоматически создадим запрос на возврат — вам потребуется ввести реквизиты для перевода."
+        : "Места освободятся, бронь будет отменена.",
       confirmText: "Отменить бронь",
       danger: true,
     });
@@ -134,6 +137,51 @@ export default function BookingPage() {
           </div>
         </div>
       </div>
+
+      {/* Баннер возврата: показываем когда бронь в статусе refund_pending */}
+      {booking.status === "refund_pending" && (
+        <div className="card" style={{ marginTop: 12, borderColor: "#f59e0b" }}>
+          <h3 style={{ marginTop: 0, color: "#f59e0b" }}>⏳ Ожидается возврат средств</h3>
+          {booking.refund_request ? (
+            <>
+              <p style={{ fontSize: 14, marginTop: 0 }}>
+                Бронь отменена. Для получения{" "}
+                <b>{Number(booking.refund_request.amount).toFixed(0)} ₽</b> укажите реквизиты для перевода.
+              </p>
+              {booking.refund_request.status === "completed" ? (
+                <div className="hint-box" style={{ borderColor: "#22c55e", background: "rgba(34,197,94,.08)" }}>
+                  ✅ Возврат выполнен.
+                </div>
+              ) : booking.refund_request.status === "filled" ? (
+                <div className="hint-box">
+                  Реквизиты получены, ждём перевода от организатора.
+                </div>
+              ) : (
+                <a
+                  href={`/refund/${booking.refund_request.payout_token}`}
+                  className="primary"
+                  style={{
+                    display: "inline-block", padding: "10px 20px",
+                    borderRadius: 8, textDecoration: "none",
+                    background: "var(--accent)", color: "#fff", fontWeight: 600,
+                  }}
+                >
+                  Ввести реквизиты для возврата →
+                </a>
+              )}
+              {booking.refund_request.link_sent_at && booking.refund_request.status === "created" && (
+                <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+                  Ссылка также отправлена на {booking.email}
+                </div>
+              )}
+            </>
+          ) : (
+            <p className="muted" style={{ fontSize: 13 }}>
+              Запрос на возврат формируется. Ссылка для ввода реквизитов придёт на email.
+            </p>
+          )}
+        </div>
+      )}
 
       {isWaiting && !isPausedForReceipt && (
         <div className="card timer-card">

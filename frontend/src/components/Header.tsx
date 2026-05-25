@@ -28,7 +28,8 @@ export default function Header() {
 
   const links: { to: string; label: string; end?: boolean }[] = [{ to: "/", label: "Афиша", end: true }];
   if (user) links.push({ to: "/bookings", label: "Мои брони" }, { to: "/profile", label: "Профиль" });
-  if (user?.role === "super_admin") links.push({ to: "/admin", label: "Админ" });
+  if (user?.role === "super_admin" || user?.role === "admin") links.push({ to: "/admin", label: "Админ" });
+  links.push({ to: "/install", label: "Установить" });
 
   const initials = (user?.full_name || user?.email || "")
     .split(/\s+/).slice(0, 2).map((p) => p[0]?.toUpperCase()).join("");
@@ -113,7 +114,6 @@ export default function Header() {
               <div className="drawer-user-name">{user.full_name || "Без имени"}</div>
               <div className="drawer-user-email">{user.email}</div>
             </div>
-            <span className="pl-arrow" aria-hidden>→</span>
           </NavLink>
         )}
 

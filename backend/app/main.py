@@ -12,7 +12,7 @@ from .db import Base, SessionLocal, engine
 from .email_service import send_booking_window_opened
 from .models import Rooftop, Screening, ScreeningBookingNotify, User, UserRole
 from .routers import (
-    admin_bookings, attendees, auth, bookings, cities, geocode, message_templates,
+    admin_bookings, admin_users, attendees, auth, bookings, cities, geocode, message_templates,
     movie_search, movies, payout_templates, receipts, refunds, rooftops,
     screening_notify, screenings, seat_types, uploads, users, ws,
 )
@@ -149,9 +149,30 @@ async def _notify_loop():
         await asyncio.sleep(60)
 
 
+def _migrate_columns() -> None:
+    """Добавляет новые колонки к существующим таблицам, если их нет.
+    Безопасно при повторных запусках — проверяет через inspect перед ALTER TABLE."""
+    from sqlalchemy import inspect, text
+
+    def cols(table: str) -> set[str]:
+        return {c["name"] for c in inspect(engine).get_columns(table)}
+
+    with engine.connect() as conn:
+        uc = cols("users")
+        if "permissions" not in uc:
+            conn.execute(text("ALTER TABLE users ADD COLUMN permissions JSON"))
+        ic = cols("rooftop_admin_invites")
+        if "permissions" not in ic:
+            conn.execute(text("ALTER TABLE rooftop_admin_invites ADD COLUMN permissions JSON"))
+        if "target_rooftop_ids" not in ic:
+            conn.execute(text("ALTER TABLE rooftop_admin_invites ADD COLUMN target_rooftop_ids JSON"))
+        conn.commit()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
+    _migrate_columns()
     db = SessionLocal()
     try:
         _ensure_super_admin(db)
@@ -197,6 +218,7 @@ app.include_router(receipts.router)
 app.include_router(payout_templates.router)
 app.include_router(message_templates.router)
 app.include_router(admin_bookings.router)
+app.include_router(admin_users.router)
 app.include_router(refunds.router)
 app.include_router(uploads.router)
 app.include_router(geocode.router)

@@ -19,7 +19,10 @@ import PayoutTemplatesAdmin from "./pages/admin/PayoutTemplatesAdmin";
 import MessageTemplatesAdmin from "./pages/admin/MessageTemplatesAdmin";
 import ManualBookingAdmin from "./pages/admin/ManualBookingAdmin";
 import RefundsAdmin from "./pages/admin/RefundsAdmin";
+import CheckInAdmin from "./pages/admin/CheckInAdmin";
+import AdminsAdmin from "./pages/admin/AdminsAdmin";
 import RefundPage from "./pages/RefundPage";
+import InstallPage from "./pages/InstallPage";
 import ProfilePage from "./pages/ProfilePage";
 import EditProfilePage from "./pages/EditProfilePage";
 import SecurityPage from "./pages/SecurityPage";
@@ -95,7 +98,10 @@ export default function App() {
                 <Route path="templates" element={<MessageTemplatesAdmin />} />
                 <Route path="manual-booking" element={<ManualBookingAdmin />} />
                 <Route path="refunds" element={<RefundsAdmin />} />
+                <Route path="check-in" element={<CheckInAdmin />} />
+                <Route path="admins" element={<AdminsAdmin />} />
               </Route>
+              <Route path="/install" element={<InstallPage />} />
               <Route path="/invite/:token" element={<Protected><AcceptInvitePage /></Protected>} />
               <Route path="/claim/:token" element={<ClaimPage />} />
               <Route path="/refund/:token" element={<RefundPage />} />

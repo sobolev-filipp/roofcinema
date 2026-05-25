@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..deps import require_admin_or_super, require_super_admin
+from ..deps import require_admin_or_super, require_perm
 from ..models import PayoutTemplate
 from ..schemas import PayoutTemplateIn, PayoutTemplateOut
 
@@ -17,7 +17,7 @@ def list_templates(db: Session = Depends(get_db), _admin=Depends(require_admin_o
     return db.query(PayoutTemplate).order_by(PayoutTemplate.is_default.desc(), PayoutTemplate.name).all()
 
 
-@router.post("", response_model=PayoutTemplateOut, status_code=201, dependencies=[Depends(require_super_admin)])
+@router.post("", response_model=PayoutTemplateOut, status_code=201, dependencies=[Depends(require_perm("manage_payout_templates"))])
 def create_template(payload: PayoutTemplateIn, db: Session = Depends(get_db)):
     if payload.is_default:
         # снимаем флаг с других
@@ -29,7 +29,7 @@ def create_template(payload: PayoutTemplateIn, db: Session = Depends(get_db)):
     return t
 
 
-@router.patch("/{template_id}", response_model=PayoutTemplateOut, dependencies=[Depends(require_super_admin)])
+@router.patch("/{template_id}", response_model=PayoutTemplateOut, dependencies=[Depends(require_perm("manage_payout_templates"))])
 def update_template(template_id: int, payload: PayoutTemplateIn, db: Session = Depends(get_db)):
     t = db.get(PayoutTemplate, template_id)
     if not t:
@@ -43,7 +43,7 @@ def update_template(template_id: int, payload: PayoutTemplateIn, db: Session = D
     return t
 
 
-@router.delete("/{template_id}", status_code=204, dependencies=[Depends(require_super_admin)])
+@router.delete("/{template_id}", status_code=204, dependencies=[Depends(require_perm("manage_payout_templates"))])
 def delete_template(template_id: int, db: Session = Depends(get_db)):
     t = db.get(PayoutTemplate, template_id)
     if not t:

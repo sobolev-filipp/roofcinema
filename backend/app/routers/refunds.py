@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from ..config import get_settings
 from ..db import get_db
-from ..deps import require_admin_or_super
+from ..deps import require_admin_or_super, require_perm
 from ..email_service import send_email
 from ..models import (
     Booking,
@@ -94,7 +94,7 @@ def _to_admin_out(rr: RefundRequest) -> RefundRequestOut:
 def create_refund_request(
     booking_id: int,
     db: Session = Depends(get_db),
-    admin: User = Depends(require_admin_or_super),
+    admin: User = Depends(require_perm("manage_refunds")),
 ):
     b = (
         db.query(Booking)
@@ -107,8 +107,11 @@ def create_refund_request(
     )
     if not b:
         raise HTTPException(status_code=404, detail="Бронь не найдена")
-    if b.status != BookingStatus.cancelled.value:
-        raise HTTPException(status_code=400, detail="Запрос на возврат создаётся только для отменённой брони")
+    if b.status not in (BookingStatus.cancelled.value, BookingStatus.refund_pending.value):
+        raise HTTPException(
+            status_code=400,
+            detail="Запрос на возврат создаётся только для отменённой брони или брони в статусе «ожидает возврата»",
+        )
 
     existing = db.query(RefundRequest).filter(RefundRequest.booking_id == b.id).first()
     if existing:
@@ -156,7 +159,7 @@ def create_refund_request(
 def resend_link(
     rr_id: int,
     db: Session = Depends(get_db),
-    _admin: User = Depends(require_admin_or_super),
+    _admin: User = Depends(require_perm("manage_refunds")),
 ):
     rr = (
         db.query(RefundRequest)
@@ -181,9 +184,26 @@ def resend_link(
 
 
 @router.get(
+    "/api/admin/refund-requests/pending-count",
+    dependencies=[Depends(require_perm("manage_refunds"))],
+)
+def pending_refunds_count(db: Session = Depends(get_db)):
+    """Количество незавершённых запросов возврата (created + filled)."""
+    count = (
+        db.query(RefundRequest)
+        .filter(RefundRequest.status.in_([
+            RefundRequestStatus.created.value,
+            RefundRequestStatus.filled.value,
+        ]))
+        .count()
+    )
+    return {"count": count}
+
+
+@router.get(
     "/api/admin/refund-requests",
     response_model=list[RefundRequestOut],
-    dependencies=[Depends(require_admin_or_super)],
+    dependencies=[Depends(require_perm("manage_refunds"))],
 )
 def list_refunds(status: str | None = None, db: Session = Depends(get_db)):
     q = db.query(RefundRequest).options(
@@ -197,13 +217,49 @@ def list_refunds(status: str | None = None, db: Session = Depends(get_db)):
 
 
 @router.post(
+    "/api/admin/refund-requests/{rr_id}/fill",
+    response_model=RefundRequestOut,
+)
+def admin_fill_refund(
+    rr_id: int,
+    payload: RefundSubmitIn,
+    db: Session = Depends(get_db),
+    _admin: User = Depends(require_perm("manage_refunds")),
+):
+    """Администратор вводит реквизиты вручную вместо пользователя."""
+    rr = (
+        db.query(RefundRequest)
+        .options(
+            joinedload(RefundRequest.booking).joinedload(Booking.screening).joinedload(Screening.movie),
+            joinedload(RefundRequest.booking).joinedload(Booking.screening).joinedload(Screening.rooftop),
+        )
+        .filter(RefundRequest.id == rr_id)
+        .first()
+    )
+    if not rr:
+        raise HTTPException(status_code=404, detail="Запрос не найден")
+    if rr.status == RefundRequestStatus.completed.value:
+        raise HTTPException(status_code=400, detail="Возврат уже выполнен")
+
+    rr.payout_full_name = payload.payout_full_name.strip()
+    rr.payout_card_or_sbp = payload.payout_card_or_sbp.strip()
+    rr.payout_bank = (payload.payout_bank or "").strip() or None
+    rr.payout_comment = (payload.payout_comment or "").strip() or None
+    rr.status = RefundRequestStatus.filled.value
+    rr.filled_at = datetime.utcnow()
+    db.commit()
+    db.refresh(rr)
+    return _to_admin_out(rr)
+
+
+@router.post(
     "/api/admin/refund-requests/{rr_id}/mark-completed",
     response_model=RefundRequestOut,
 )
 def mark_completed(
     rr_id: int,
     db: Session = Depends(get_db),
-    admin: User = Depends(require_admin_or_super),
+    admin: User = Depends(require_perm("manage_refunds")),
 ):
     rr = (
         db.query(RefundRequest)

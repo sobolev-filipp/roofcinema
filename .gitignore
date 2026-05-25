@@ -1,0 +1,18 @@
+__pycache__/
+*.pyc
+*.pyo
+.env
+venv/
+*.db
+*.db-journal
+# Загруженные файлы пользователей — не хранить в git
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# OS
+.DS_Store
+Thumbs.db

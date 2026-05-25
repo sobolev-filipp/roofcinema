@@ -7,8 +7,24 @@ import { useUI } from "../../ui";
 type AddressSuggestion = { address: string; lat: number; lng: number; display: string; full_display: string };
 type InviteOut = {
   id: number; rooftop_id: number; token: string;
-  expires_at: string; accepted_at: string | null; revoked_at: string | null; created_at: string;
+  expires_at: string; accepted_at: string | null; revoked_at: string | null;
+  permissions: string[] | null; created_at: string;
 };
+
+const PERM_OPTIONS: { value: string; label: string }[] = [
+  { value: "manage_rooftops",         label: "Редактировать крыши" },
+  { value: "manage_movies",           label: "Добавлять / редактировать фильмы" },
+  { value: "manage_screenings",       label: "Создавать / редактировать показы" },
+  { value: "manage_bookings",         label: "Работать с бронированиями" },
+  { value: "manage_transfers",        label: "Переносить брони" },
+  { value: "manage_cancellations",    label: "Отменять брони" },
+  { value: "manual_booking",          label: "Добавлять брони вручную" },
+  { value: "manage_receipts",         label: "Проверять чеки" },
+  { value: "manage_refunds",          label: "Работать с возвратами" },
+  { value: "manage_payout_templates", label: "Управлять реквизитами" },
+  { value: "manage_templates",        label: "Редактировать шаблоны сообщений" },
+  { value: "check_in",                label: "Раздел «Вход» (QR-сканер)" },
+];
 
 export default function RooftopAdmin() {
   const { confirm } = useUI();
@@ -23,6 +39,10 @@ export default function RooftopAdmin() {
   const [invites, setInvites] = useState<InviteOut[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  // Создание приглашения: открытая панель с чекбоксами прав
+  const [showInviteForm, setShowInviteForm] = useState(false);
+  // null = все права (full access); [] = конкретный список (пустой по умолчанию)
+  const [invitePerms, setInvitePerms] = useState<string[] | null>(null);
 
   async function reload() {
     const [cs, all, st, iv] = await Promise.all([
@@ -82,9 +102,22 @@ export default function RooftopAdmin() {
 
   async function createInvite() {
     try {
-      await api.post(`/api/rooftops/${rooftopId}/invites`);
+      await api.post(`/api/rooftops/${rooftopId}/invites`, { permissions: invitePerms });
+      setShowInviteForm(false);
+      setInvitePerms(null);
       await reload();
     } catch (e: any) { setErr(e.message); }
+  }
+
+  function toggleInvitePerm(perm: string) {
+    if (invitePerms === null) {
+      // Was "all rights" → switch to specific list with this perm only
+      setInvitePerms([perm]);
+    } else if (invitePerms.includes(perm)) {
+      setInvitePerms(invitePerms.filter((p) => p !== perm));
+    } else {
+      setInvitePerms([...invitePerms, perm]);
+    }
   }
   async function revokeInvite(iv: InviteOut) {
     try {
@@ -198,8 +231,47 @@ export default function RooftopAdmin() {
 
       <h3 style={{ marginTop: 32 }}>Администраторы крыши</h3>
       <div className="row gap" style={{ marginBottom: 12 }}>
-        <button className="primary" onClick={createInvite}>+ Новая ссылка-приглашение</button>
+        <button className="primary" onClick={() => setShowInviteForm((v) => !v)}>
+          {showInviteForm ? "Отмена" : "+ Новая ссылка-приглашение"}
+        </button>
       </div>
+
+      {showInviteForm && (
+        <div className="card" style={{ marginBottom: 16 }}>
+          <h4 style={{ marginTop: 0, marginBottom: 8 }}>Права нового администратора</h4>
+          <div style={{ marginBottom: 10 }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontWeight: 600, fontSize: 14 }}>
+              <input
+                type="checkbox"
+                checked={invitePerms === null}
+                onChange={() => setInvitePerms(invitePerms === null ? [] : null)}
+              />
+              Все права (без ограничений)
+            </label>
+          </div>
+          {invitePerms !== null && (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 20px", marginBottom: 12 }}>
+              {PERM_OPTIONS.map((p) => (
+                <label key={p.value} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 14 }}>
+                  <input
+                    type="checkbox"
+                    checked={invitePerms.includes(p.value)}
+                    onChange={() => toggleInvitePerm(p.value)}
+                  />
+                  {p.label}
+                </label>
+              ))}
+            </div>
+          )}
+          {invitePerms !== null && invitePerms.length === 0 && (
+            <div className="muted" style={{ fontSize: 13, marginBottom: 10 }}>
+              ⚠️ Без прав администратор не увидит ни одного раздела.
+            </div>
+          )}
+          <button className="primary" onClick={createInvite}>Создать приглашение</button>
+        </div>
+      )}
+
       <div className="cards-grid">
         {invites.map((iv) => {
           const url = `${window.location.origin}/invite/${iv.token}`;
@@ -207,6 +279,13 @@ export default function RooftopAdmin() {
             : iv.accepted_at ? "принято"
             : new Date(iv.expires_at) < new Date() ? "истекло"
             : "ожидает";
+          const permLabel = iv.permissions === null
+            ? "Все права"
+            : iv.permissions.length === 0
+              ? "Без прав"
+              : iv.permissions
+                  .map((p) => PERM_OPTIONS.find((o) => o.value === p)?.label ?? p)
+                  .join(", ");
           return (
             <div key={iv.id} className="card">
               <div className="row between">
@@ -220,6 +299,9 @@ export default function RooftopAdmin() {
               )}
               <div className="muted" style={{ fontSize: 11, marginTop: 6 }}>
                 действует до {new Date(iv.expires_at).toLocaleDateString("ru-RU")}
+              </div>
+              <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
+                Права: {permLabel}
               </div>
             </div>
           );

@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, selectinload
 
 from ..db import get_db
-from ..deps import require_admin_or_super
+from ..deps import require_admin_or_super, require_perm
 from ..models import Movie, MovieStill
 from ..schemas import MovieIn, MovieOut, MovieStillIn, MovieStillOut, MovieUpdateIn
 
@@ -32,7 +32,7 @@ def get_movie(movie_id: int, db: Session = Depends(get_db)):
     return movie
 
 
-@router.post("", response_model=MovieOut, status_code=201, dependencies=[Depends(require_admin_or_super)])
+@router.post("", response_model=MovieOut, status_code=201, dependencies=[Depends(require_perm("manage_movies"))])
 def create_movie(payload: MovieIn, db: Session = Depends(get_db)):
     if payload.kinopoisk_id:
         existing = db.query(Movie).filter(Movie.kinopoisk_id == payload.kinopoisk_id).first()
@@ -45,7 +45,7 @@ def create_movie(payload: MovieIn, db: Session = Depends(get_db)):
     return movie
 
 
-@router.patch("/{movie_id}", response_model=MovieOut, dependencies=[Depends(require_admin_or_super)])
+@router.patch("/{movie_id}", response_model=MovieOut, dependencies=[Depends(require_perm("manage_movies"))])
 def update_movie(movie_id: int, payload: MovieUpdateIn, db: Session = Depends(get_db)):
     movie = db.get(Movie, movie_id)
     if not movie:
@@ -57,7 +57,7 @@ def update_movie(movie_id: int, payload: MovieUpdateIn, db: Session = Depends(ge
     return movie
 
 
-@router.delete("/{movie_id}", status_code=204, dependencies=[Depends(require_admin_or_super)])
+@router.delete("/{movie_id}", status_code=204, dependencies=[Depends(require_perm("manage_movies"))])
 def delete_movie(movie_id: int, db: Session = Depends(get_db)):
     movie = db.get(Movie, movie_id)
     if not movie:
@@ -68,7 +68,7 @@ def delete_movie(movie_id: int, db: Session = Depends(get_db)):
 
 # --- кадры из фильма ---
 
-@router.post("/{movie_id}/stills", response_model=MovieStillOut, status_code=201, dependencies=[Depends(require_admin_or_super)])
+@router.post("/{movie_id}/stills", response_model=MovieStillOut, status_code=201, dependencies=[Depends(require_perm("manage_movies"))])
 def add_still(movie_id: int, payload: MovieStillIn, db: Session = Depends(get_db)):
     if not db.get(Movie, movie_id):
         raise HTTPException(status_code=404, detail="Фильм не найден")
@@ -79,7 +79,7 @@ def add_still(movie_id: int, payload: MovieStillIn, db: Session = Depends(get_db
     return still
 
 
-@router.delete("/{movie_id}/stills/{still_id}", status_code=204, dependencies=[Depends(require_admin_or_super)])
+@router.delete("/{movie_id}/stills/{still_id}", status_code=204, dependencies=[Depends(require_perm("manage_movies"))])
 def remove_still(movie_id: int, still_id: int, db: Session = Depends(get_db)):
     still = db.get(MovieStill, still_id)
     if not still or still.movie_id != movie_id:

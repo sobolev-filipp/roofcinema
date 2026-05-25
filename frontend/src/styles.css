@@ -1931,3 +1931,104 @@ button.primary.danger:hover { background: #c62828; border-color: #c62828; }
 }
 .ac-option:hover, .ac-option.active { background: var(--bg-soft); }
 .ac-loading { padding: 9px var(--s-3); font-size: var(--fs-sm); color: var(--text-dim); }
+
+/* =========================================================================
+   Check-in (Этап F)
+   ========================================================================= */
+
+.checkin-wrap {
+  max-width: 480px;
+  margin: 0 auto;
+  padding-top: var(--s-4);
+}
+
+/* Видео для QR-сканера */
+.checkin-video-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background: #000;
+  border: 2px solid var(--border-strong);
+}
+.checkin-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.checkin-hint {
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0,0,0,.65);
+  color: #fff;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 13px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* Preview карточка */
+.checkin-preview {
+  border-left: 4px solid var(--ok);
+}
+.checkin-preview--blocked {
+  border-left-color: var(--err);
+}
+.checkin-movie {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+.checkin-time {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-bottom: 14px;
+}
+.checkin-guest {
+  background: var(--bg-soft);
+  border-radius: var(--r-sm);
+  padding: var(--s-3) var(--s-4);
+}
+.checkin-guest-name {
+  font-size: 16px;
+  font-weight: 600;
+}
+.checkin-guest-meta {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-top: 3px;
+}
+
+/* Результирующий экран (success / error) */
+.checkin-result {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 48px;
+  min-height: 60vh;
+}
+.checkin-result-icon {
+  font-size: 72px;
+  line-height: 1;
+  animation: checkin-pop .3s ease;
+}
+.checkin-result-title {
+  font-size: 26px;
+  font-weight: 700;
+  margin-top: 16px;
+  text-align: center;
+}
+.checkin-result-sub {
+  font-size: 16px;
+  color: var(--text-dim);
+  margin-top: 8px;
+  text-align: center;
+}
+@keyframes checkin-pop {
+  from { transform: scale(0.5); opacity: 0; }
+  to   { transform: scale(1);   opacity: 1; }
+}

@@ -10,7 +10,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from ..db import get_db
-from ..deps import get_current_user, require_admin_or_super
+from ..deps import get_current_user, require_admin_or_super, require_perm
 from ..email_service import send_payment_approved, send_payment_rejected
 from ..models import (
     Booking,
@@ -168,11 +168,11 @@ async def upload_receipt(
 
 @router.get(
     "/api/admin/receipts/pending-count",
-    dependencies=[Depends(require_admin_or_super)],
+    dependencies=[Depends(require_perm("manage_receipts"))],
 )
 def pending_count(
     db: Session = Depends(get_db),
-    user: User = Depends(require_admin_or_super),
+    user: User = Depends(require_perm("manage_receipts")),
 ):
     """Сколько чеков ждут проверки. Для бейджа в админ-навигации."""
     q = db.query(func.count(PaymentReceipt.id)).filter(
@@ -196,12 +196,12 @@ def pending_count(
 @router.get(
     "/api/admin/receipts",
     response_model=list[PaymentReceiptAdminOut],
-    dependencies=[Depends(require_admin_or_super)],
+    dependencies=[Depends(require_perm("manage_receipts"))],
 )
 def list_receipts_admin(
     status: str = "pending",
     db: Session = Depends(get_db),
-    user: User = Depends(require_admin_or_super),
+    user: User = Depends(require_perm("manage_receipts")),
 ):
     q = (
         db.query(PaymentReceipt)
@@ -239,7 +239,7 @@ def list_receipts_admin(
 def approve_receipt(
     receipt_id: int,
     db: Session = Depends(get_db),
-    user: User = Depends(require_admin_or_super),
+    user: User = Depends(require_perm("manage_receipts")),
 ):
     r = (
         db.query(PaymentReceipt)
@@ -296,7 +296,7 @@ def reject_receipt(
     receipt_id: int,
     payload: PaymentReceiptRejectIn,
     db: Session = Depends(get_db),
-    user: User = Depends(require_admin_or_super),
+    user: User = Depends(require_perm("manage_receipts")),
 ):
     r = (
         db.query(PaymentReceipt)

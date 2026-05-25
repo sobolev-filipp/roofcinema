@@ -10,13 +10,15 @@ from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from ..db import get_db
-from ..deps import get_current_user, require_admin_or_super
+from ..deps import get_current_user, require_admin_or_super, require_perm
 from ..models import (
     Booking,
     BookingItem,
     BookingStatus,
     PaymentReceipt,
     PaymentReceiptStatus,
+    RefundRequest,
+    RefundRequestStatus,
     Rooftop,
     RooftopAdmin,
     Screening,
@@ -24,7 +26,7 @@ from ..models import (
     User,
     UserRole,
 )
-from ..schemas import BookingCreateIn, BookingOut, BookingScreeningInfo
+from ..schemas import BookingCreateIn, BookingOut, BookingScreeningInfo, RefundBasicOut
 from ..utils import now_in_tz
 from ..ws_manager import manager
 
@@ -103,6 +105,7 @@ def _eager() -> list:
         selectinload(Booking.items).joinedload(BookingItem.screening_seat_type),
         selectinload(Booking.receipts),
         selectinload(Booking.attendees),
+        joinedload(Booking.refund_request),
     ]
 
 
@@ -145,6 +148,8 @@ def _to_out(b: Booking) -> BookingOut:
     out.total_guests = total_guests
     for a_out, a in zip(out.attendees, b.attendees):
         a_out.claim_url = f"/claim/{a.claim_token}"
+    if b.refund_request:
+        out.refund_request = RefundBasicOut.model_validate(b.refund_request, from_attributes=True)
     return out
 
 
@@ -176,7 +181,7 @@ def list_bookings_admin(
     status: str | None = None,
     q: str | None = None,
     db: Session = Depends(get_db),
-    user: User = Depends(require_admin_or_super),
+    user: User = Depends(require_perm("manage_bookings")),
 ):
     """Админ-листинг бронирований с фильтрами."""
     _expire_overdue(db)
@@ -353,17 +358,65 @@ def cancel_booking(
     is_admin = user.role in (UserRole.super_admin.value, UserRole.admin.value)
     if not (is_owner or is_admin):
         raise HTTPException(status_code=403, detail="Нет доступа к этой брони")
+    # Если действует как администратор (не как владелец брони) — проверяем гранулярные права
+    if not is_owner and is_admin and user.role != UserRole.super_admin.value:
+        if user.permissions is not None and "manage_cancellations" not in user.permissions:
+            raise HTTPException(status_code=403, detail="У вас нет права: manage_cancellations")
     if b.status not in _CANCELLABLE:
         raise HTTPException(status_code=400, detail=f"Нельзя отменить бронь в статусе {b.status}")
     was_paid = b.status in (BookingStatus.paid.value, BookingStatus.paid_by_balance.value)
-    b.status = BookingStatus.cancelled.value
     b.cancelled_at = datetime.utcnow()
     b.cancel_reason = "Отменено пользователем" if is_owner else "Отменено администратором"
+
+    # Если бронь была оплачена — автоматически создаём запрос на возврат вместо
+    # простой отмены. Ставим status=refund_pending; пользователь должен заполнить
+    # реквизиты по ссылке из письма/баннера на странице брони.
+    auto_rr: RefundRequest | None = None
+    if was_paid:
+        total = float(b.total_amount)
+        balance_used = float(b.balance_used or 0)
+        external_amount = max(0.0, total - balance_used)
+
+        # Возвращаем на баланс ту часть, что была оплачена с баланса
+        if balance_used > 0 and b.user_id:
+            owner = db.get(User, b.user_id)
+            if owner:
+                owner.balance = float(owner.balance or 0) + balance_used
+
+        if external_amount > 0:
+            # Есть что вернуть переводом — создаём RefundRequest и ставим refund_pending
+            existing_rr = db.query(RefundRequest).filter(RefundRequest.booking_id == b.id).first()
+            if not existing_rr:
+                auto_rr = RefundRequest(
+                    booking_id=b.id,
+                    status=RefundRequestStatus.created.value,
+                    payout_token=secrets.token_urlsafe(24),
+                    amount=external_amount,
+                    # created_by_admin_id = None — создано автоматически при отмене
+                )
+                db.add(auto_rr)
+            b.status = BookingStatus.refund_pending.value
+        else:
+            # Всё было с баланса — обычная отмена (баланс уже вернули выше)
+            b.status = BookingStatus.cancelled.value
+    else:
+        b.status = BookingStatus.cancelled.value
+
     db.commit()
     _broadcast(b.screening_id, "updated", b.id)
 
-    # Email-уведомление пользователю об отмене (по шаблону user_cancel_notice, если есть default).
-    # was_paid тут не критично — шлём при любой отмене с email'ом.
+    # Отправляем письмо с ссылкой на возврат (если создали RefundRequest)
+    if auto_rr is not None:
+        try:
+            from .refunds import _send_refund_link_email
+            sent = _send_refund_link_email(db, b, auto_rr)
+            if sent:
+                auto_rr.link_sent_at = datetime.utcnow()
+                db.commit()
+        except Exception:
+            pass
+
+    # Email-уведомление об отмене (по шаблону user_cancel_notice, если настроен)
     try:
         from ..email_service import send_email
         from ..models import MessageTemplate
@@ -384,7 +437,6 @@ def cancel_booking(
             body = render_template(tpl.text, ctx)
             send_email(b.email, "Ваша бронь отменена — Кино на крыше", body)
     except Exception:
-        # SMTP может упасть — отмена сама по себе уже выполнена, не блокируем
         pass
 
     return _to_out(db.query(Booking).options(*_eager()).filter(Booking.id == b.id).first())
@@ -392,7 +444,7 @@ def cancel_booking(
 
 # === АДМИН-ДЕЙСТВИЯ ===
 
-@router.post("/{booking_id}/mark-paid", response_model=BookingOut, dependencies=[Depends(require_admin_or_super)])
+@router.post("/{booking_id}/mark-paid", response_model=BookingOut, dependencies=[Depends(require_perm("manage_bookings"))])
 def mark_paid_admin(booking_id: int, db: Session = Depends(get_db)):
     """Админ помечает бронь оплаченной (через перевод подтверждённый вручную).
     Фаза 5 добавит загрузку чека + подтверждение."""
@@ -408,7 +460,7 @@ def mark_paid_admin(booking_id: int, db: Session = Depends(get_db)):
     return _to_out(db.query(Booking).options(*_eager()).filter(Booking.id == b.id).first())
 
 
-@router.post("/{booking_id}/extend", response_model=BookingOut, dependencies=[Depends(require_admin_or_super)])
+@router.post("/{booking_id}/extend", response_model=BookingOut, dependencies=[Depends(require_perm("manage_bookings"))])
 def extend_booking(booking_id: int, minutes: int, db: Session = Depends(get_db)):
     """Продлить окно оплаты на N минут (только waiting_payment)."""
     if minutes < 1 or minutes > 24 * 60 * 7:
@@ -425,7 +477,7 @@ def extend_booking(booking_id: int, minutes: int, db: Session = Depends(get_db))
     return _to_out(db.query(Booking).options(*_eager()).filter(Booking.id == b.id).first())
 
 
-@router.post("/{booking_id}/transfer", response_model=BookingOut, dependencies=[Depends(require_admin_or_super)])
+@router.post("/{booking_id}/transfer", response_model=BookingOut, dependencies=[Depends(require_perm("manage_transfers"))])
 def transfer_booking(booking_id: int, target_screening_id: int, db: Session = Depends(get_db)):
     """Перенести бронь на другой показ. Требует, чтобы у цели были типы мест с теми же именами и хватало мест."""
     b = db.query(Booking).options(selectinload(Booking.items)).filter(Booking.id == booking_id).first()
@@ -471,7 +523,7 @@ def transfer_booking(booking_id: int, target_screening_id: int, db: Session = De
     return _to_out(db.query(Booking).options(*_eager()).filter(Booking.id == b.id).first())
 
 
-@router.post("/{booking_id}/refund-to-balance", response_model=BookingOut, dependencies=[Depends(require_admin_or_super)])
+@router.post("/{booking_id}/refund-to-balance", response_model=BookingOut, dependencies=[Depends(require_perm("manage_cancellations"))])
 def refund_to_balance(booking_id: int, db: Session = Depends(get_db)):
     """Возврат оплаченной (или ждущей оплаты) брони на баланс пользователя.
     Меняет статус на refunded и пополняет user.balance на total_amount."""
