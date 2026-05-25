@@ -8,7 +8,7 @@ type AddressSuggestion = { address: string; lat: number; lng: number; display: s
 type InviteOut = {
   id: number; rooftop_id: number; token: string;
   expires_at: string; accepted_at: string | null; revoked_at: string | null;
-  permissions: string[] | null; created_at: string;
+  permissions: string[] | null; target_rooftop_ids: number[] | null; created_at: string;
 };
 
 const PERM_OPTIONS: { value: string; label: string }[] = [
@@ -33,6 +33,7 @@ export default function RooftopAdmin() {
   const nav = useNavigate();
   const [cities, setCities] = useState<City[]>([]);
   const [rooftop, setRooftop] = useState<Rooftop | null>(null);
+  const [allRooftops, setAllRooftops] = useState<Rooftop[]>([]);
   const [form, setForm] = useState({ name: "", address: "", description: "", lat: null as number | null, lng: null as number | null });
   const [seatTypes, setSeatTypes] = useState<SeatType[]>([]);
   const [newSt, setNewSt] = useState({ name: "", default_price: 0, default_count: 0, capacity: 1 });
@@ -43,6 +44,8 @@ export default function RooftopAdmin() {
   const [showInviteForm, setShowInviteForm] = useState(false);
   // null = все права (full access); [] = конкретный список (пустой по умолчанию)
   const [invitePerms, setInvitePerms] = useState<string[] | null>(null);
+  // Дополнительные крыши для приглашения (текущая всегда включена)
+  const [inviteExtraRooftopIds, setInviteExtraRooftopIds] = useState<number[]>([]);
 
   async function reload() {
     const [cs, all, st, iv] = await Promise.all([
@@ -52,6 +55,7 @@ export default function RooftopAdmin() {
       api.get<InviteOut[]>(`/api/rooftops/${rooftopId}/invites`).catch(() => []),
     ]);
     setCities(cs);
+    setAllRooftops(all);
     const r = all.find((x) => x.id === rooftopId) ?? null;
     setRooftop(r);
     if (r) setForm({ name: r.name, address: r.address, description: r.description ?? "", lat: r.lat, lng: r.lng });
@@ -102,11 +106,20 @@ export default function RooftopAdmin() {
 
   async function createInvite() {
     try {
-      await api.post(`/api/rooftops/${rooftopId}/invites`, { permissions: invitePerms });
+      // Текущая крыша всегда идёт первой (становится primary_rooftop_id)
+      const rooftop_ids = [rooftopId, ...inviteExtraRooftopIds.filter((id) => id !== rooftopId)];
+      await api.post(`/api/admin/invites`, { permissions: invitePerms, rooftop_ids });
       setShowInviteForm(false);
       setInvitePerms(null);
+      setInviteExtraRooftopIds([]);
       await reload();
     } catch (e: any) { setErr(e.message); }
+  }
+
+  function toggleInviteExtraRooftop(id: number) {
+    setInviteExtraRooftopIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
   }
 
   function toggleInvitePerm(perm: string) {
@@ -231,14 +244,51 @@ export default function RooftopAdmin() {
 
       <h3 style={{ marginTop: 32 }}>Администраторы крыши</h3>
       <div className="row gap" style={{ marginBottom: 12 }}>
-        <button className="primary" onClick={() => setShowInviteForm((v) => !v)}>
+        <button
+          className="primary"
+          onClick={() => {
+            if (showInviteForm) {
+              setShowInviteForm(false);
+              setInvitePerms(null);
+              setInviteExtraRooftopIds([]);
+            } else {
+              setShowInviteForm(true);
+            }
+          }}
+        >
           {showInviteForm ? "Отмена" : "+ Новая ссылка-приглашение"}
         </button>
       </div>
 
       {showInviteForm && (
         <div className="card" style={{ marginBottom: 16 }}>
-          <h4 style={{ marginTop: 0, marginBottom: 8 }}>Права нового администратора</h4>
+          <h4 style={{ marginTop: 0, marginBottom: 8 }}>Крыши для этого приглашения</h4>
+          {/* Текущая крыша — всегда включена */}
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, marginBottom: 6, opacity: 0.7 }}>
+            <input type="checkbox" checked disabled />
+            <span>{rooftop.name} <span className="muted">(текущая, обязательно)</span></span>
+          </label>
+          {/* Остальные крыши, сгруппированные по городам */}
+          {cities
+            .filter((c) => allRooftops.some((r) => r.city_id === c.id && r.id !== rooftopId))
+            .map((c) => (
+              <div key={c.id} style={{ marginBottom: 6 }}>
+                <div className="muted" style={{ fontSize: 11, marginBottom: 3 }}>{c.name}</div>
+                {allRooftops
+                  .filter((r) => r.city_id === c.id && r.id !== rooftopId)
+                  .map((r) => (
+                    <label key={r.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, marginBottom: 3, cursor: "pointer" }}>
+                      <input
+                        type="checkbox"
+                        checked={inviteExtraRooftopIds.includes(r.id)}
+                        onChange={() => toggleInviteExtraRooftop(r.id)}
+                      />
+                      {r.name}
+                    </label>
+                  ))}
+              </div>
+            ))}
+          <h4 style={{ marginBottom: 8 }}>Права нового администратора</h4>
           <div style={{ marginBottom: 10 }}>
             <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontWeight: 600, fontSize: 14 }}>
               <input
@@ -303,6 +353,13 @@ export default function RooftopAdmin() {
               <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
                 Права: {permLabel}
               </div>
+              {iv.target_rooftop_ids && iv.target_rooftop_ids.length > 1 && (
+                <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>
+                  Крыши: {iv.target_rooftop_ids
+                    .map((rid) => allRooftops.find((r) => r.id === rid)?.name ?? `#${rid}`)
+                    .join(", ")}
+                </div>
+              )}
             </div>
           );
         })}

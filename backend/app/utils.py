@@ -82,6 +82,7 @@ TEMPLATE_PLACEHOLDERS: dict[str, list[str]] = {
     "manual_booking": [
         "{full_name}", "{movie}", "{starts_at}", "{rooftop}", "{rooftop_address}", "{city}",
         "{amount}", "{expires_at}", "{booking_link}", "{claim_link}",
+        "{payout_details}", "{items}",
     ],
     "post_payment": [
         "{full_name}", "{movie}", "{starts_at}", "{rooftop}", "{city}",

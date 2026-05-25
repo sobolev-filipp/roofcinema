@@ -23,7 +23,7 @@ const PLACEHOLDER_HINTS: Record<string, string> = {
   "{rooftop}": "Название крыши",
   "{rooftop_address}": "Точный адрес крыши",
   "{city}": "Город",
-  "{expires_at}": "Дедлайн оплаты — дата и время",
+  "{expires_at}": "Дедлайн оплаты — до какого времени гость должен оплатить (время создания брони + окно оплаты показа)",
   "{amount}": "Сумма к оплате, ₽",
   "{booking_link}": "Ссылка на страницу брони (требует логина)",
   "{claim_link}": "Магическая ссылка на бронь (без логина, есть QR)",
@@ -31,10 +31,12 @@ const PLACEHOLDER_HINTS: Record<string, string> = {
   "{reason}": "Причина отмены (текст вписывает админ)",
   "{short_code}": "6-значный код брони для входа",
   "{qr_image_link}": "Прямая ссылка на картинку QR-кода",
+  "{payout_details}": "Реквизиты для оплаты из настроек показа (получатель, номер карты, телефон СБП, банк) — каждый реквизит на отдельной строке",
+  "{items}": "Список забронированных мест — тип × количество и сумма, каждая позиция на отдельной строке",
 };
 
 const KIND_HINTS: Record<MessageTemplateKind, string> = {
-  manual_booking: "Текст для отправки пользователю до оплаты (с ссылкой на бронь и суммой).",
+  manual_booking: "Текст для отправки пользователю до оплаты. Используйте {expires_at} — дедлайн оплаты, {amount} — сумму, {booking_link} — ссылку на бронь, {rooftop_address} — адрес крыши, {payout_details} — реквизиты оплаты, {items} — список мест.",
   post_payment: "Текст после подтверждения оплаты — с QR-кодом и числовым кодом входа. Используется как «копировать» с открытой брони.",
   user_cancel_notice: "Письмо, которое уйдёт пользователю при отмене его брони.",
   admin_cancel_screening: "Уведомление всем гостям при отмене показа целиком.",
@@ -155,6 +157,8 @@ export default function MessageTemplatesAdmin() {
       claim_link: `${window.location.origin}/claim/abc123def`,
       refund_link: `${window.location.origin}/refund/xyz789`,
       reason: "Дождь — показ перенесён",
+      payout_details: "Получатель: ИП Крышников А.В.\nКарта: 2200 1234 5678 9012\nТелефон (СБП): +7 999 123-45-67\nБанк: Сбербанк",
+      items: "Стандарт ×2 — 3 000 ₽\nVIP ×1 — 2 500 ₽",
     };
     try {
       const res = await api.post<{ rendered: string }>("/api/admin/message-templates/preview", {

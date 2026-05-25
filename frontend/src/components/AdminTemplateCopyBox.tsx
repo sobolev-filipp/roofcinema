@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { api, type Booking, type MessageTemplate, type MessageTemplateKind } from "../api";
+import { api, type Booking, type MessageTemplate, type MessageTemplateKind, type Screening } from "../api";
 import { useUI } from "../ui";
 
 const fmt = (iso: string) =>
@@ -22,20 +22,46 @@ export default function AdminTemplateCopyBox({ booking }: Props) {
   const [templates, setTemplates] = useState<Record<MessageTemplateKind, MessageTemplate[]>>(
     {} as Record<MessageTemplateKind, MessageTemplate[]>,
   );
+  const [screening, setScreening] = useState<Screening | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([
       api.get<MessageTemplate[]>("/api/admin/message-templates?kind=manual_booking").catch(() => []),
       api.get<MessageTemplate[]>("/api/admin/message-templates?kind=post_payment").catch(() => []),
-    ]).then(([m, p]) => {
+      api.get<Screening>(`/api/screenings/${booking.screening_id}`).catch(() => null),
+    ]).then(([m, p, s]) => {
       setTemplates({ manual_booking: m, post_payment: p } as any);
+      setScreening(s);
     });
   }, [booking.id]);
 
   const info = booking.screening_info;
   if (!info) return null;
   const isPaid = PAID_STATUSES.has(booking.status);
+
+  function buildPayoutDetails(): string {
+    const pt = screening?.payout_template;
+    if (!pt) return "";
+    const lines: string[] = [];
+    lines.push(`Получатель: ${pt.recipient_name}`);
+    if (pt.card_number) lines.push(`Карта: ${pt.card_number}`);
+    if (pt.phone) lines.push(`Телефон (СБП): ${pt.phone}`);
+    if (pt.bank_name) lines.push(`Банк: ${pt.bank_name}`);
+    if (pt.note) lines.push(pt.note);
+    return lines.join("\n");
+  }
+
+  function buildItems(): string {
+    if (!booking.items || booking.items.length === 0) return "";
+    return booking.items
+      .filter((item) => item.qty > 0)
+      .map((item) => {
+        const total = (item.qty * item.price_each).toLocaleString("ru-RU");
+        return `${item.name} ×${item.qty} — ${total} ₽`;
+      })
+      .join("\n");
+  }
 
   function pickDefault(kind: MessageTemplateKind): MessageTemplate | null {
     const list = templates[kind] || [];
@@ -66,6 +92,8 @@ export default function AdminTemplateCopyBox({ booking }: Props) {
       claim_link: "",
       short_code: booking.short_code,
       qr_image_link: qrImageUrl(booking.qr_token),
+      payout_details: buildPayoutDetails(),
+      items: buildItems(),
     };
     try {
       const res = await api.post<{ rendered: string }>("/api/admin/message-templates/preview", {
