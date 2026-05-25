@@ -6,7 +6,7 @@
 - **Процесс-менеджер**: systemd (uvicorn)
 - **Веб-сервер**: Nginx
 
-> **Про базу данных.** Проект использует **SQLite** — это файловая БД, отдельный сервер не нужен.
+> **Про базу данных.** Проект использует **SQLite** — файловая БД, отдельный сервер не нужен.
 > Бэкап = просто скопировать один файл `roofcinema.db`. Для кинотеатра на крышах этого достаточно.
 > Если в будущем понадобится PostgreSQL — см. раздел «Переезд на PostgreSQL» в конце.
 
@@ -39,28 +39,28 @@ ssh root@ВАШ_IP_АДРЕС
 apt update && apt upgrade -y
 ```
 
-### 2.2 Установка пакетов
+### 2.2 Установка Node.js 20+ (обязательно именно 20+)
 
-```bash
-apt install -y python3 python3-pip python3-venv nodejs npm nginx git curl certbot python3-certbot-nginx
-```
-
-Проверка версий:
-
-```bash
-python3 --version   # нужно 3.10+
-node --version      # нужно 18+
-nginx -v
-```
-
-Если Node.js ниже 18:
+> ⚠️ **Важно:** стандартный `apt install nodejs` ставит старую версию 18, с которой сборка
+> фронтенда не работает. Устанавливайте строго через nodesource:
 
 ```bash
 curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
 apt install -y nodejs
 ```
 
-### 2.3 Создание рабочей директории
+Проверка — должно быть `v20.x.x`:
+```bash
+node --version
+```
+
+### 2.3 Установка остальных пакетов
+
+```bash
+apt install -y python3 python3-pip python3-venv nginx git curl certbot python3-certbot-nginx
+```
+
+### 2.4 Создание рабочей директории
 
 ```bash
 mkdir -p /var/www/roofcinema
@@ -150,14 +150,13 @@ mkdir -p /var/www/roofcinema/backend/uploads
 
 ### 4.3 Создание файла .env
 
-`.env` — это файл с секретными настройками (пароли, ключи, адрес БД). Он **не хранится в git** и **не перезаписывается при обновлениях**. Создаётся один раз.
+`.env` — файл с секретными настройками. Не хранится в git, создаётся один раз вручную.
 
 #### Способ 1 — Загрузить через SFTP (проще всего)
 
-1. На вашем компьютере создайте файл `roofcinema.env` (например, на рабочем столе) с содержимым ниже
-2. Откройте FileZilla, подключитесь к серверу
-3. Загрузите файл в `/var/www/roofcinema/backend/`
-4. Переименуйте его на сервере:
+1. На своём компьютере создайте файл `roofcinema.env` с содержимым ниже
+2. Загрузите через FileZilla в `/var/www/roofcinema/backend/`
+3. Переименуйте на сервере:
    ```bash
    mv /var/www/roofcinema/backend/roofcinema.env /var/www/roofcinema/backend/.env
    ```
@@ -215,11 +214,9 @@ APP_BASE_URL=https://ВАШ_ДОМЕН.RU
 python3 -c "import secrets; print(secrets.token_hex(32))"
 ```
 
-Скопируйте вывод и вставьте вместо `СГЕНЕРИРУЙТЕ_ДЛИННУЮ_СЛУЧАЙНУЮ_СТРОКУ`.
-
 ---
 
-### 4.4 Тест запуска (проверка что всё работает)
+### 4.4 Тест запуска бэкенда
 
 ```bash
 cd /var/www/roofcinema/backend
@@ -272,7 +269,54 @@ npm install
 npm run build
 ```
 
-После этого появится папка `frontend/dist/` — Nginx будет отдавать файлы из неё напрямую.
+Сборка занимает ~10–30 секунд. Успешный результат выглядит так:
+```
+✓ 93 modules transformed.
+dist/index.html    1.10 kB
+dist/assets/...
+✓ built in 7.95s
+```
+
+Проверьте что папка создалась:
+```bash
+ls /var/www/roofcinema/frontend/dist/
+# Должны быть: index.html, assets/, sw.js, ...
+```
+
+### ⚠️ Возможные ошибки при сборке
+
+**Ошибка: `tsc: Permission denied`**
+
+Возникает если `node_modules` пришёл с Windows через git/SFTP и потерял флаг исполняемости.
+Исправление:
+```bash
+rm -rf node_modules
+npm install
+npm run build
+```
+
+**Ошибка: `WARN EBADENGINE` — Unsupported engine**
+
+Просто предупреждения о совместимости, не ошибки — сборка продолжится и завершится успешно.
+Если сборка всё же упала из-за версии Node, проверьте:
+```bash
+node --version   # нужно v20+
+```
+Если меньше 20 — переустановите (см. Часть 2.2).
+
+**Ошибка TypeScript (например, `error TS18047: ... is possibly 'null'`)**
+
+Это ошибка в коде, не в окружении. Нужно исправить на компьютере, закоммитить и снова собрать:
+```bash
+# На вашем компьютере — исправьте ошибку, затем:
+git add .
+git commit -m "fix: ..."
+git push origin main
+
+# На сервере:
+git pull origin main
+npm run build
+```
 
 ---
 
@@ -336,31 +380,33 @@ nginx -t                  # должно быть: syntax is ok
 systemctl reload nginx
 ```
 
+> ⚠️ **Nginx не запускайте до того как собрали фронтенд** (`dist/` должна существовать).
+> Если Nginx запущен без `dist/` — он уходит в бесконечный цикл редиректов и отдаёт 500.
+
 ---
 
 ## 🔒 ЧАСТЬ 7: Бесплатный HTTPS-сертификат (Let's Encrypt)
 
-> Сертификат выдаётся бесплатно через Let's Encrypt, действует 90 дней и обновляется автоматически.
-> **Обязательное условие:** DNS-записи домена уже должны указывать на IP вашего сервера (иначе будет ошибка).
+> Сертификат выдаётся бесплатно, действует 90 дней, обновляется автоматически.
+> **Обязательное условие:** DNS-записи домена уже должны указывать на IP вашего сервера.
 
 ### 7.1 Настройте DNS-записи у регистратора домена
 
-Зайдите на сайт, где куплен домен → раздел **«Управление DNS»** → добавьте две записи:
+Зайдите на сайт, где куплен домен → **«Управление DNS»** → добавьте две записи:
 
 | Тип | Имя / Subdomain | Значение (IP сервера) | TTL |
 |-----|-----------------|-----------------------|-----|
 | **A** | `@` | `ВАШ_IP_СЕРВЕРА` | 3600 |
 | **A** | `www` | `ВАШ_IP_СЕРВЕРА` | 3600 |
 
-Узнать IP сервера (если забыли):
+Узнать IP сервера:
 ```bash
 curl ifconfig.me
 ```
 
 ### 7.2 Дождитесь обновления DNS (5–30 минут)
 
-Проверяйте периодически на сервере:
-
+Проверяйте на сервере:
 ```bash
 nslookup ВАШ_ДОМЕН.RU
 ```
@@ -368,10 +414,10 @@ nslookup ВАШ_ДОМЕН.RU
 Когда в ответе появится ваш IP — можно продолжать:
 ```
 Name:    ВАШ_ДОМЕН.RU
-Address: ВАШ_IP_СЕРВЕРА   ← это должно совпасть
+Address: ВАШ_IP_СЕРВЕРА
 ```
 
-Или проверьте онлайн: [dnschecker.org](https://dnschecker.org) → введите ваш домен.
+Или онлайн: [dnschecker.org](https://dnschecker.org)
 
 ### 7.3 Получите сертификат
 
@@ -380,35 +426,28 @@ certbot --nginx -d ВАШ_ДОМЕН.RU -d www.ВАШ_ДОМЕН.RU
 ```
 
 Certbot задаст два вопроса:
-1. **Email** — введите ваш (для уведомлений об истечении)
+1. **Email** — введите ваш (для уведомлений)
 2. **Agree to terms** — введите `Y`
 
-Certbot сам изменит конфиг Nginx и добавит HTTPS. После этого сайт будет доступен по `https://`.
+Certbot сам изменит конфиг Nginx и добавит HTTPS.
 
 ### 7.4 Проверьте автообновление
 
-Сертификат действует 90 дней, но продлевается сам. Проверьте что автообновление работает:
-
 ```bash
 certbot renew --dry-run
-# Должно вывести: "Congratulations, all simulated renewals succeeded"
+# Ожидается: "Congratulations, all simulated renewals succeeded"
 ```
 
-### Частые ошибки
+### Частые ошибки certbot
 
 **`NXDOMAIN` — DNS problem**
 ```
 DNS problem: NXDOMAIN looking up A for ВАШ_ДОМЕН.RU
 ```
-→ DNS-записи ещё не прописаны или не успели обновиться. Вернитесь к шагу 7.1–7.2.
+→ DNS-записи не прописаны или не обновились. Вернитесь к шагу 7.1–7.2 и подождите.
 
 **`Connection refused` или `Timeout`**
-→ Nginx не запущен. Проверьте: `systemctl status nginx` и запустите: `systemctl start nginx`
-
-**Повторный запуск после исправления ошибки:**
-```bash
-certbot --nginx -d ВАШ_ДОМЕН.RU -d www.ВАШ_ДОМЕН.RU
-```
+→ Nginx не запущен: `systemctl start nginx`
 
 ---
 
@@ -419,15 +458,17 @@ certbot --nginx -d ВАШ_ДОМЕН.RU -d www.ВАШ_ДОМЕН.RU
 systemctl status roofcinema
 systemctl status nginx
 
-# Тест API напрямую
+# Тест API (через GET-запрос)
 curl http://localhost:8000/api/health
 # Ожидается: {"status":"ok"}
 
-# Тест через Nginx
-curl http://ВАШ_ДОМЕН_ИЛИ_IP/api/health
+# Тест через Nginx (обязательно curl, не просто URL в терминале!)
+curl https://ВАШ_ДОМЕН.RU/api/health
+# Ожидается: {"status":"ok"}
 ```
 
-Откройте браузер: `https://ВАШ_ДОМЕН.RU` — должен загрузиться сайт.
+> ⚠️ **Не вводите URL в терминал без `curl`** — `http://...` это не команда bash,
+> будет ошибка `No such file or directory`.
 
 ---
 
@@ -456,6 +497,8 @@ pip install -q -r backend/requirements.txt
 
 echo "→ Собираем фронтенд..."
 cd frontend
+# Удаляем node_modules перед установкой — избегаем проблем с правами
+rm -rf node_modules
 npm install --silent
 npm run build
 cd ..
@@ -482,7 +525,6 @@ chmod +x /var/www/roofcinema/deploy.sh
 **Шаг 1 — на вашем компьютере:**
 
 ```bash
-# В папке F:\Проекты\RoofCinema
 git add .
 git commit -m "описание изменений"
 git push origin main
@@ -513,18 +555,18 @@ cp /var/www/roofcinema/data/roofcinema.db \
 crontab -e
 ```
 
-Добавьте строку (вставить в конец файла):
+Добавьте строку:
 
 ```
 0 3 * * * cp /var/www/roofcinema/data/roofcinema.db /var/www/roofcinema/data/roofcinema_$(date +\%Y\%m\%d).db && find /var/www/roofcinema/data -name "roofcinema_*.db" -mtime +7 -delete
 ```
 
-Сохраняет ежедневную копию, удаляет копии старше 7 дней.
+Создаёт ежедневную копию, удаляет копии старше 7 дней.
 
 ### Скачать БД на компьютер
 
 ```bash
-# Выполнить в терминале на вашем компьютере (не на сервере)
+# Выполнить в терминале на вашем компьютере
 scp root@ВАШ_IP:/var/www/roofcinema/data/roofcinema.db C:\Users\filip\Desktop\roofcinema_backup.db
 ```
 
@@ -537,7 +579,7 @@ scp root@ВАШ_IP:/var/www/roofcinema/data/roofcinema.db C:\Users\filip\Desktop
 systemctl status roofcinema
 journalctl -u roofcinema -n 100 --no-pager
 
-# Логи в реальном времени (смотреть как стартует)
+# Логи в реальном времени
 journalctl -u roofcinema -f
 
 # Логи Nginx
@@ -550,6 +592,11 @@ systemctl reload nginx
 
 # Проверить что порт 8000 слушается
 ss -tlnp | grep 8000
+
+# Проверить версии
+node --version
+python3 --version
+nginx -v
 ```
 
 ---
@@ -563,7 +610,7 @@ ss -tlnp | grep 8000
 │   ├── .env                  ← СЕКРЕТЫ — не в git, создаётся вручную один раз
 │   └── uploads/              ← загруженные файлы — не в git, не трогать при обновлении
 ├── frontend/                 ← код фронтенда (из git, обновляется)
-│   └── dist/                 ← собранный фронт (пересоздаётся при обновлении)
+│   └── dist/                 ← собранный фронт (пересоздаётся при каждом обновлении)
 ├── data/
 │   └── roofcinema.db         ← БАЗА ДАННЫХ — не в git, не трогать при обновлении
 ├── venv/                     ← Python-окружение (создаётся один раз)
@@ -580,15 +627,13 @@ ss -tlnp | grep 8000
 > Нужно только если SQLite перестанет справляться (тысячи одновременных бронирований).
 > Для старта SQLite полностью достаточен.
 
-### На сервере: установка и настройка PostgreSQL
+### Установка и настройка PostgreSQL
 
 ```bash
 apt install -y postgresql postgresql-contrib
 
-# Входим в консоль PostgreSQL
 sudo -u postgres psql
 
-# Создаём базу и пользователя
 CREATE DATABASE roofcinema;
 CREATE USER roofcinema_user WITH PASSWORD 'придумайте_пароль';
 GRANT ALL PRIVILEGES ON DATABASE roofcinema TO roofcinema_user;
@@ -598,12 +643,9 @@ GRANT ALL PRIVILEGES ON DATABASE roofcinema TO roofcinema_user;
 ### Установка Python-драйвера
 
 Добавьте в `backend/requirements.txt`:
-
 ```
 psycopg2-binary==2.9.10
 ```
-
-Затем на сервере:
 
 ```bash
 source /var/www/roofcinema/venv/bin/activate
@@ -616,13 +658,8 @@ pip install psycopg2-binary
 DATABASE_URL=postgresql://roofcinema_user:придумайте_пароль@localhost:5432/roofcinema
 ```
 
-### Перезапуск
-
 ```bash
 systemctl restart roofcinema
 ```
 
-При старте `Base.metadata.create_all()` создаст все таблицы автоматически.
-
-> ⚠️ **Важно:** если вы уже работали на SQLite и хотите перенести данные в PostgreSQL,
-> это требует отдельной процедуры миграции данных (экспорт/импорт).
+> ⚠️ При переезде с SQLite данные нужно переносить отдельно — таблицы создадутся пустыми.

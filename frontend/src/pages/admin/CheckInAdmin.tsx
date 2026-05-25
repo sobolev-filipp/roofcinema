@@ -169,7 +169,13 @@ export default function CheckInAdmin() {
         detail={
           isAlready
             ? "Этот гость уже был отмечен ранее"
-            : `${info?.guests_count ?? 1} чел. · ${info?.movie_title}`
+            : [
+                `${info?.guests_count ?? 1} чел.`,
+                info?.seat_breakdown.length
+                  ? info.seat_breakdown.map((s) => `${s.name} ×${s.qty}`).join(", ")
+                  : null,
+                info?.movie_title,
+              ].filter(Boolean).join(" · ")
         }
         onReset={reset}
       />
@@ -209,6 +215,19 @@ export default function CheckInAdmin() {
               {info.guests_count} {info.guests_count === 1 ? "человек" : "человека"} ·{" "}
               <span className="muted">{STATUS_LABELS[info.booking_status] ?? info.booking_status}</span>
             </div>
+            {info.seat_breakdown.length > 0 && (
+              <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {info.seat_breakdown.map((s) => (
+                  <span
+                    key={s.name}
+                    className="badge"
+                    style={{ fontSize: 13, padding: "3px 10px" }}
+                  >
+                    {s.name} ×{s.qty}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
 
           {info.already_attended && (

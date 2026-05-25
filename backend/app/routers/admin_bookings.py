@@ -294,6 +294,11 @@ _BOOKING_STATUS_LABELS: dict[str, str] = {
 }
 
 
+class CheckInSeatItem(BaseModel):
+    name: str
+    qty: int
+
+
 class CheckInInfo(BaseModel):
     """Результат поиска кода — показывается пользователю до подтверждения."""
     kind: Literal["booking", "attendee"]
@@ -301,6 +306,7 @@ class CheckInInfo(BaseModel):
     attendee_id: int | None = None
     full_name: str
     guests_count: int
+    seat_breakdown: list[CheckInSeatItem] = []  # типы мест: [{name, qty}]
     movie_title: str
     screening_id: int
     screening_starts_at_iso: str
@@ -384,6 +390,12 @@ def _build_check_in_info(
         else (booking.full_name or booking.email or "—")
     )
     guests_count = attendee.guests_count if attendee else _total_guests(booking)
+    # Разбивка по типам мест — всегда берём из booking.items (для attendee тоже показываем)
+    seat_breakdown = [
+        CheckInSeatItem(name=item.name, qty=int(item.qty))
+        for item in (booking.items or [])
+        if item.qty > 0
+    ]
     movie_title = movie.title if movie else "—"
     rooftop_name = rooftop.name if rooftop else "—"
     starts_at_iso = screening.starts_at.isoformat() if screening else ""
@@ -399,6 +411,7 @@ def _build_check_in_info(
             attendee_id=attendee.id if attendee else None,
             full_name=full_name,
             guests_count=guests_count,
+            seat_breakdown=seat_breakdown,
             movie_title=movie_title,
             screening_id=screening_id,
             screening_starts_at_iso=starts_at_iso,
@@ -444,6 +457,7 @@ def _build_check_in_info(
         attendee_id=attendee.id if attendee else None,
         full_name=full_name,
         guests_count=guests_count,
+        seat_breakdown=seat_breakdown,
         movie_title=movie_title,
         screening_id=screening_id,
         screening_starts_at_iso=starts_at_iso,

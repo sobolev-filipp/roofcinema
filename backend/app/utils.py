@@ -80,8 +80,8 @@ RU_TZ_VALUES = {tz["value"] for tz in RU_TIMEZONES}
 # (валидация/документация), и frontend'ом (показ кликабельных бейджей).
 TEMPLATE_PLACEHOLDERS: dict[str, list[str]] = {
     "manual_booking": [
-        "{full_name}", "{movie}", "{starts_at}", "{rooftop}", "{city}",
-        "{amount}", "{booking_link}", "{claim_link}",
+        "{full_name}", "{movie}", "{starts_at}", "{rooftop}", "{rooftop_address}", "{city}",
+        "{amount}", "{expires_at}", "{booking_link}", "{claim_link}",
     ],
     "post_payment": [
         "{full_name}", "{movie}", "{starts_at}", "{rooftop}", "{city}",

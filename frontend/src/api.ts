@@ -361,12 +361,18 @@ export type RefundBasic = {
 
 // === Check-in (Этап F) ===
 
+export type CheckInSeatItem = {
+  name: string;
+  qty: number;
+};
+
 export type CheckInInfo = {
   kind: "booking" | "attendee";
   booking_id: number;
   attendee_id: number | null;
   full_name: string;
   guests_count: number;
+  seat_breakdown: CheckInSeatItem[];
   movie_title: string;
   screening_id: number;
   screening_starts_at_iso: string;
