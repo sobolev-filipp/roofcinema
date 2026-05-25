@@ -308,6 +308,12 @@ class Booking(Base):
         cascade="all, delete-orphan",
         order_by="PaymentReceipt.uploaded_at.desc()",
     )
+    attendees = relationship(
+        "BookingAttendee",
+        back_populates="booking",
+        cascade="all, delete-orphan",
+        order_by="BookingAttendee.id",
+    )
 
 
 class BookingItem(Base):
@@ -326,6 +332,65 @@ class BookingItem(Base):
 
     booking = relationship("Booking", back_populates="items")
     screening_seat_type = relationship("ScreeningSeatType", back_populates="booking_items")
+
+
+class RefundRequestStatus(str, Enum):
+    created = "created"        # запрос создан, пользователь ещё не заполнил реквизиты
+    filled = "filled"          # пользователь ввёл реквизиты, админ ещё не перевёл
+    completed = "completed"    # админ пометил «перевод выполнен»
+
+
+class RefundRequest(Base):
+    """Запрос на возврат денег по отменённой брони.
+    Создаётся админом, дальше — публичная форма /refund/{token} где
+    пользователь вводит ФИО/реквизиты. Админ потом помечает как выполненный."""
+    __tablename__ = "refund_requests"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    booking_id: Mapped[int] = mapped_column(ForeignKey("bookings.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    status: Mapped[str] = mapped_column(String(16), default=RefundRequestStatus.created.value, nullable=False, index=True)
+    payout_token: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    amount: Mapped[float] = mapped_column(Numeric(10, 2), default=0, nullable=False)
+
+    # заполняются пользователем через публичную форму
+    payout_full_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    payout_card_or_sbp: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    payout_bank: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    payout_comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    created_by_admin_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    completed_by_admin_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+    link_sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    filled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    booking = relationship("Booking", foreign_keys=[booking_id])
+
+
+class MessageTemplateKind(str, Enum):
+    """Назначение шаблона. Один kind может иметь несколько шаблонов, один помечен default."""
+    manual_booking = "manual_booking"               # текст для отправки пользователю при ручной броне
+    post_payment = "post_payment"                   # после подтверждения оплаты (с QR и кодом)
+    user_cancel_notice = "user_cancel_notice"       # письмо пользователю об отмене брони
+    admin_cancel_screening = "admin_cancel_screening"  # отмена всего показа
+    refund_link = "refund_link"                     # сопровождение ссылки для возврата средств
+    custom = "custom"                                # произвольный шаблон
+
+
+class MessageTemplate(Base):
+    """Шаблон сообщения с плейсхолдерами вида {movie}, {starts_at}, {booking_link} и т.п.
+    Подставляются через utils.render_template() — неизвестные плейсхолдеры
+    остаются в тексте как есть, чтобы админ заметил опечатку."""
+    __tablename__ = "message_templates"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 
 
 class ScreeningBookingNotify(Base):
@@ -367,6 +432,34 @@ class PaymentReceipt(Base):
 
     booking = relationship("Booking", back_populates="receipts")
     reviewed_by = relationship("User", foreign_keys=[reviewed_by_id])
+
+
+class BookingAttendee(Base):
+    """Гость, на которого «разделена» часть мест из брони.
+    Платит главный бронирующий — у attendee только свои QR/short_code/claim-ссылка.
+
+    guests_count — сколько человек этот гость покрывает (например, 2 если ему отдают скамейку).
+    claim_token — публичная магическая ссылка вида /claim/{token}: по ней можно
+    посмотреть билет без аккаунта и опционально привязать к своему профилю."""
+    __tablename__ = "booking_attendees"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    booking_id: Mapped[int] = mapped_column(ForeignKey("bookings.id", ondelete="CASCADE"), nullable=False, index=True)
+    email: Mapped[str] = mapped_column(String(255), nullable=False)
+    full_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    guests_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+    qr_token: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    short_code: Mapped[str] = mapped_column(String(12), unique=True, index=True, nullable=False)
+    claim_token: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+
+    claimed_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    notified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+    booking = relationship("Booking", back_populates="attendees")
+    claimed_by = relationship("User", foreign_keys=[claimed_by_user_id])
 
 
 class RooftopAdminInvite(Base):

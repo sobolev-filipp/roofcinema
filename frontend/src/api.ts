@@ -157,6 +157,81 @@ export type ScreeningNotifySubscription = {
   notified_at: string | null;
 };
 
+export type MessageTemplateKind =
+  | "manual_booking"
+  | "post_payment"
+  | "user_cancel_notice"
+  | "admin_cancel_screening"
+  | "refund_link"
+  | "custom";
+
+export type MessageTemplate = {
+  id: number;
+  kind: MessageTemplateKind;
+  name: string;
+  text: string;
+  is_default: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export const TEMPLATE_KIND_LABELS: Record<MessageTemplateKind, string> = {
+  manual_booking: "Ручное бронирование (до оплаты)",
+  post_payment: "После оплаты (с QR-кодом)",
+  user_cancel_notice: "Отмена брони (письмо пользователю)",
+  admin_cancel_screening: "Отмена показа целиком",
+  refund_link: "Возврат средств — ссылка на форму",
+  custom: "Произвольный",
+};
+
+export type RefundRequestStatus = "created" | "filled" | "completed";
+
+export type RefundRequest = {
+  id: number;
+  booking_id: number;
+  status: RefundRequestStatus;
+  amount: number;
+  payout_full_name: string | null;
+  payout_card_or_sbp: string | null;
+  payout_bank: string | null;
+  payout_comment: string | null;
+  created_at: string;
+  link_sent_at: string | null;
+  filled_at: string | null;
+  completed_at: string | null;
+  payout_url: string;
+  booking_full_name: string;
+  booking_email: string;
+  movie_title: string;
+  screening_starts_at: string | null;
+  rooftop_name: string;
+};
+
+export type RefundClaim = {
+  status: RefundRequestStatus;
+  amount: number;
+  movie_title: string;
+  screening_starts_at: string;
+  rooftop_name: string;
+  main_booker_name: string;
+  payout_full_name: string | null;
+  payout_card_or_sbp: string | null;
+  payout_bank: string | null;
+  payout_comment: string | null;
+  completed_at: string | null;
+};
+
+export type UserSearchHit = {
+  source: "user" | "booking_only";
+  user_id: number | null;
+  email: string | null;
+  full_name: string | null;
+  phone: string | null;
+  social_url: string | null;
+  booking_count: number;
+  last_booking_at: string | null;
+};
+
 export type PayoutTemplate = {
   id: number;
   name: string;
@@ -236,6 +311,41 @@ export type PaymentReceiptAdmin = PaymentReceipt & {
   rooftop_name: string;
 };
 
+export type BookingAttendee = {
+  id: number;
+  booking_id: number;
+  email: string;
+  full_name: string | null;
+  guests_count: number;
+  short_code: string;
+  qr_token: string;
+  claim_url: string;
+  claimed_by_user_id: number | null;
+  claimed_at: string | null;
+  notified_at: string | null;
+  created_at: string;
+};
+
+export type ClaimInfo = {
+  attendee_id: number;
+  email: string;
+  full_name: string | null;
+  guests_count: number;
+  short_code: string | null;
+  qr_token: string | null;
+  is_paid: boolean;
+  booking_status: BookingStatus;
+  main_booker_full_name: string;
+  movie_title: string;
+  movie_poster_url: string | null;
+  screening_starts_at: string;
+  rooftop_name: string;
+  city_name: string;
+  rooftop_address: string | null;
+  claimed_by_user_id: number | null;
+  claimed_at: string | null;
+};
+
 export type Booking = {
   id: number;
   user_id: number | null;
@@ -259,4 +369,6 @@ export type Booking = {
   items: BookingItem[];
   screening_info: BookingScreeningInfo | null;
   receipts: PaymentReceipt[];
+  attendees: BookingAttendee[];
+  total_guests: number;
 };

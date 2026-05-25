@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { api, type Booking, type Screening } from "../../api";
 import { STATUS_COLOR, STATUS_LABELS, formatCountdown, msUntil } from "../../lib/bookingStatus";
 import { useBookingsWs } from "../../lib/useBookingsWs";
+import { useUI } from "../../ui";
 
 const fmt = (iso: string) =>
   new Date(iso).toLocaleString("ru-RU", { dateStyle: "medium", timeStyle: "short" });
@@ -15,6 +16,7 @@ function isActiveScreening(s: Screening) {
 }
 
 export default function BookingsAdmin() {
+  const { confirm, notify } = useUI();
   const [screenings, setScreenings] = useState<Screening[]>([]);
   const [tab, setTab] = useState<Tab>("active");
   const [screeningId, setScreeningId] = useState<number | null>(null);
@@ -68,40 +70,74 @@ export default function BookingsAdmin() {
 
   const selectedScreening = useMemo(() => screenings.find((s) => s.id === screeningId) ?? null, [screenings, screeningId]);
 
+  const [extendModal, setExtendModal] = useState<{ b: Booking; minutes: number } | null>(null);
+  const [transferModal, setTransferModal] = useState<{ b: Booking; target: number | null } | null>(null);
+
   async function extend(b: Booking) {
-    const minutesStr = window.prompt("На сколько минут продлить?", "60");
-    if (!minutesStr) return;
-    const m = parseInt(minutesStr, 10);
-    if (!m || m < 1) return;
-    try { await api.post(`/api/bookings/${b.id}/extend?minutes=${m}`); await reload(); }
-    catch (e: any) { alert(e.message); }
+    setExtendModal({ b, minutes: 60 });
+  }
+  async function submitExtend() {
+    if (!extendModal) return;
+    const { b, minutes } = extendModal;
+    if (!minutes || minutes < 1) return;
+    setExtendModal(null);
+    try { await api.post(`/api/bookings/${b.id}/extend?minutes=${minutes}`); await reload(); }
+    catch (e: any) { await notify({ title: "Ошибка", message: e.message, kind: "error" }); }
   }
   async function adminCancel(b: Booking) {
-    if (!window.confirm(`Отменить бронь ${b.full_name}? Деньги пользователю не возвращаются автоматически.`)) return;
+    const ok = await confirm({
+      title: "Отменить бронь?",
+      message: `${b.full_name}. Деньги пользователю не возвращаются автоматически — это делается отдельно.`,
+      confirmText: "Отменить бронь",
+      danger: true,
+    });
+    if (!ok) return;
     try { await api.post(`/api/bookings/${b.id}/cancel`); await reload(); }
-    catch (e: any) { alert(e.message); }
+    catch (e: any) { await notify({ title: "Ошибка", message: e.message, kind: "error" }); }
   }
   async function refundToBalance(b: Booking) {
-    if (!window.confirm(`Вернуть ${Number(b.total_amount).toFixed(0)} ₽ на баланс «${b.full_name}»?`)) return;
+    const ok = await confirm({
+      title: "Вернуть на баланс?",
+      message: `${Number(b.total_amount).toFixed(0)} ₽ зачислится на баланс «${b.full_name}». Бронь станет «возвращённой».`,
+      confirmText: "Вернуть на баланс",
+    });
+    if (!ok) return;
     try { await api.post(`/api/bookings/${b.id}/refund-to-balance`); await reload(); }
-    catch (e: any) { alert(e.message); }
+    catch (e: any) { await notify({ title: "Ошибка", message: e.message, kind: "error" }); }
+  }
+
+  async function requestMoneyRefund(b: Booking) {
+    const ok = await confirm({
+      title: "Запросить возврат денег?",
+      message: `Пользователю ${b.full_name} (${b.email}) уйдёт письмо со ссылкой на форму ввода реквизитов. После заполнения возврат появится в разделе «Возвраты».`,
+      confirmText: "Создать запрос",
+    });
+    if (!ok) return;
+    try {
+      await api.post(`/api/admin/bookings/${b.id}/refund-request`);
+      await reload();
+      await notify({ title: "Готово", message: "Запрос создан, ссылка отправлена на email пользователя.", kind: "success" });
+    } catch (e: any) { await notify({ title: "Ошибка", message: e.message, kind: "error" }); }
   }
   async function transferBooking(b: Booking) {
-    const choices = screenings
-      .filter((s) => s.id !== b.screening_id && isActiveScreening(s))
-      .map((s) => `${s.id} — ${s.movie.title} · ${fmt(s.starts_at)} · ${s.rooftop.name}`)
-      .join("\n");
-    const targetStr = window.prompt("ID нового показа для переноса:\n\n" + choices, "");
-    if (!targetStr) return;
-    const target = parseInt(targetStr, 10);
-    if (!target) return;
+    setTransferModal({ b, target: null });
+  }
+  async function submitTransfer() {
+    if (!transferModal || !transferModal.target) return;
+    const { b, target } = transferModal;
+    setTransferModal(null);
     try { await api.post(`/api/bookings/${b.id}/transfer?target_screening_id=${target}`); await reload(); }
-    catch (e: any) { alert(e.message); }
+    catch (e: any) { await notify({ title: "Ошибка переноса", message: e.message, kind: "error" }); }
   }
   async function markPaid(b: Booking) {
-    if (!window.confirm("Пометить бронь как оплаченную? (заглушка, Фаза 5 заменит на загрузку чека)")) return;
+    const ok = await confirm({
+      title: "Пометить оплаченной?",
+      message: `Ручное подтверждение для ${b.full_name} (без проверки чека). Используйте, если оплата подтверждена другим способом.`,
+      confirmText: "Пометить оплаченной",
+    });
+    if (!ok) return;
     try { await api.post(`/api/bookings/${b.id}/mark-paid`); await reload(); }
-    catch (e: any) { alert(e.message); }
+    catch (e: any) { await notify({ title: "Ошибка", message: e.message, kind: "error" }); }
   }
 
   return (
@@ -152,6 +188,63 @@ export default function BookingsAdmin() {
           </div>
         )}
       </div>
+
+      {extendModal && (
+        <div className="ui-backdrop" role="dialog" aria-modal="true" onClick={() => setExtendModal(null)}>
+          <div className="ui-dialog" onClick={(e) => e.stopPropagation()}>
+            <h3 className="ui-dialog-title">Продлить бронь</h3>
+            <div className="ui-dialog-body">
+              {extendModal.b.full_name} — на сколько минут добавить времени для оплаты?
+            </div>
+            <input
+              autoFocus
+              type="number"
+              min={1}
+              max={10080}
+              value={extendModal.minutes}
+              onChange={(e) => setExtendModal({ b: extendModal.b, minutes: Number(e.target.value) })}
+              style={{ marginTop: 12, width: "100%" }}
+            />
+            <div className="ui-dialog-actions">
+              <button type="button" className="ghost" onClick={() => setExtendModal(null)}>Отмена</button>
+              <button type="button" className="primary" onClick={submitExtend}>Продлить</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {transferModal && (
+        <div className="ui-backdrop" role="dialog" aria-modal="true" onClick={() => setTransferModal(null)}>
+          <div className="ui-dialog" style={{ maxWidth: 560 }} onClick={(e) => e.stopPropagation()}>
+            <h3 className="ui-dialog-title">Перенести бронь</h3>
+            <div className="ui-dialog-body">
+              {transferModal.b.full_name} — на какой показ перенести?
+              Перенос сохранит типы мест по именам и не меняет уплаченную цену.
+            </div>
+            <select
+              autoFocus
+              value={transferModal.target ?? ""}
+              onChange={(e) => setTransferModal({ b: transferModal.b, target: e.target.value ? Number(e.target.value) : null })}
+              style={{ marginTop: 12, width: "100%" }}
+            >
+              <option value="">— выбрать показ —</option>
+              {screenings
+                .filter((s) => s.id !== transferModal.b.screening_id && isActiveScreening(s))
+                .map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.movie.title} · {fmt(s.starts_at)} · {s.rooftop.name}
+                  </option>
+                ))}
+            </select>
+            <div className="ui-dialog-actions">
+              <button type="button" className="ghost" onClick={() => setTransferModal(null)}>Отмена</button>
+              <button type="button" className="primary" onClick={submitTransfer} disabled={!transferModal.target}>
+                Перенести
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {selectedScreening && (
         <div className="card" style={{ marginTop: 16 }}>
@@ -224,7 +317,17 @@ export default function BookingsAdmin() {
                       {(b.status === "paid" || b.status === "paid_by_balance") && (
                         <button onClick={() => refundToBalance(b)}>→ баланс</button>
                       )}
-                      {b.status === "waiting_payment" && (
+                      {(b.status === "cancelled") && (
+                        <>
+                          <button onClick={() => refundToBalance(b)}>→ баланс</button>
+                          {Number(b.total_amount) - Number(b.balance_used || 0) > 0 && (
+                            <button className="primary" onClick={() => requestMoneyRefund(b)}>
+                              запросить возврат денег
+                            </button>
+                          )}
+                        </>
+                      )}
+                      {(b.status === "waiting_payment" || b.status === "paid" || b.status === "paid_by_balance") && (
                         <button className="ghost danger-on-hover" onClick={() => adminCancel(b)}>отменить</button>
                       )}
                     </span>

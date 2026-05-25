@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { api, type PayoutTemplate } from "../../api";
+import { useUI } from "../../ui";
 
 const empty = {
   name: "", recipient_name: "", card_number: "", phone: "", bank_name: "", note: "", is_default: false,
 };
 
 export default function PayoutTemplatesAdmin() {
+  const { confirm } = useUI();
   const [list, setList] = useState<PayoutTemplate[]>([]);
   const [form, setForm] = useState(empty);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -45,7 +47,7 @@ export default function PayoutTemplatesAdmin() {
   }
 
   async function del(t: PayoutTemplate) {
-    if (!window.confirm(`Удалить шаблон «${t.name}»?`)) return;
+    if (!await confirm({ title: "Удалить шаблон?", message: `«${t.name}» — действие необратимо.`, confirmText: "Удалить", danger: true })) return;
     try { await api.del(`/api/payout-templates/${t.id}`); await reload(); }
     catch (e: any) { setErr(e.message); }
   }

@@ -15,6 +15,8 @@ from ..models import (
     Booking,
     BookingItem,
     BookingStatus,
+    PaymentReceipt,
+    PaymentReceiptStatus,
     Rooftop,
     RooftopAdmin,
     Screening,
@@ -48,11 +50,19 @@ def _gen_short_code(db: Session) -> str:
 
 
 def _expire_overdue(db: Session) -> None:
-    """Помечает все waiting_payment с истёкшим expires_at как expired."""
+    """Помечает все waiting_payment с истёкшим expires_at как expired.
+
+    Брони с pending-чеком НЕ истекают: их таймер «на паузе» до решения админа.
+    Эффективно пауза реализована тем, что при reject мы продлеваем expires_at
+    на длительность проверки чека (см. receipts.reject_receipt)."""
     now = datetime.utcnow()
     overdue = (
         db.query(Booking)
-        .filter(Booking.status == BookingStatus.waiting_payment.value, Booking.expires_at < now)
+        .filter(
+            Booking.status == BookingStatus.waiting_payment.value,
+            Booking.expires_at < now,
+            ~Booking.receipts.any(PaymentReceipt.status == PaymentReceiptStatus.pending.value),
+        )
         .all()
     )
     if not overdue:
@@ -90,8 +100,9 @@ def _eager() -> list:
     return [
         joinedload(Booking.screening).joinedload(Screening.movie),
         joinedload(Booking.screening).joinedload(Screening.rooftop).joinedload(Rooftop.city),
-        selectinload(Booking.items),
+        selectinload(Booking.items).joinedload(BookingItem.screening_seat_type),
         selectinload(Booking.receipts),
+        selectinload(Booking.attendees),
     ]
 
 
@@ -103,7 +114,7 @@ _REVEALS_ADDRESS = {
 
 
 def _to_out(b: Booking) -> BookingOut:
-    """Сериализация с заполненным screening_info.
+    """Сериализация с заполненным screening_info, attendees[].claim_url и total_guests.
     Точный адрес крыши раскрываем только если бронь оплачена/посещена."""
     s = b.screening
     info = None
@@ -120,8 +131,20 @@ def _to_out(b: Booking) -> BookingOut:
             city_name=(s.rooftop.city.name if s.rooftop and s.rooftop.city else ""),
             rooftop_address=(s.rooftop.address if s.rooftop and reveal_address else None),
         )
+    # total_guests: сумма qty * capacity по items (snapshot capacity на момент брони
+    # хранится в ScreeningSeatType — догружаем через relationship; если потеряли, считаем 1).
+    total_guests = 0
+    for it in b.items:
+        cap = 1
+        if it.screening_seat_type is not None:
+            cap = it.screening_seat_type.capacity or 1
+        total_guests += int(it.qty) * cap
+
     out = BookingOut.model_validate(b, from_attributes=True)
     out.screening_info = info
+    out.total_guests = total_guests
+    for a_out, a in zip(out.attendees, b.attendees):
+        a_out.claim_url = f"/claim/{a.claim_token}"
     return out
 
 
@@ -310,6 +333,13 @@ def create_booking(
     return _to_out(b)
 
 
+_CANCELLABLE = (
+    BookingStatus.waiting_payment.value,
+    BookingStatus.paid.value,
+    BookingStatus.paid_by_balance.value,
+)
+
+
 @router.post("/{booking_id}/cancel", response_model=BookingOut)
 def cancel_booking(
     booking_id: int,
@@ -323,13 +353,40 @@ def cancel_booking(
     is_admin = user.role in (UserRole.super_admin.value, UserRole.admin.value)
     if not (is_owner or is_admin):
         raise HTTPException(status_code=403, detail="Нет доступа к этой брони")
-    if b.status not in (BookingStatus.waiting_payment.value,):
-        raise HTTPException(status_code=400, detail="Можно отменить только бронь, ожидающую оплаты")
+    if b.status not in _CANCELLABLE:
+        raise HTTPException(status_code=400, detail=f"Нельзя отменить бронь в статусе {b.status}")
+    was_paid = b.status in (BookingStatus.paid.value, BookingStatus.paid_by_balance.value)
     b.status = BookingStatus.cancelled.value
     b.cancelled_at = datetime.utcnow()
     b.cancel_reason = "Отменено пользователем" if is_owner else "Отменено администратором"
     db.commit()
     _broadcast(b.screening_id, "updated", b.id)
+
+    # Email-уведомление пользователю об отмене (по шаблону user_cancel_notice, если есть default).
+    # was_paid тут не критично — шлём при любой отмене с email'ом.
+    try:
+        from ..email_service import send_email
+        from ..models import MessageTemplate
+        from ..utils import render_template
+        tpl = (
+            db.query(MessageTemplate)
+            .filter(MessageTemplate.kind == "user_cancel_notice", MessageTemplate.is_default.is_(True))
+            .first()
+        )
+        if tpl and b.email:
+            ctx = {
+                "full_name": b.full_name,
+                "movie": b.screening.movie.title if b.screening and b.screening.movie else "",
+                "starts_at": b.screening.starts_at.strftime("%d.%m.%Y %H:%M") if b.screening else "",
+                "rooftop": b.screening.rooftop.name if b.screening and b.screening.rooftop else "",
+                "reason": b.cancel_reason or "",
+            }
+            body = render_template(tpl.text, ctx)
+            send_email(b.email, "Ваша бронь отменена — Кино на крыше", body)
+    except Exception:
+        # SMTP может упасть — отмена сама по себе уже выполнена, не блокируем
+        pass
+
     return _to_out(db.query(Booking).options(*_eager()).filter(Booking.id == b.id).first())
 
 
@@ -423,7 +480,9 @@ def refund_to_balance(booking_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Бронь не найдена")
     if not b.user_id:
         raise HTTPException(status_code=400, detail="У брони нет привязанного пользователя")
-    if b.status in (BookingStatus.refunded.value, BookingStatus.cancelled.value, BookingStatus.expired.value):
+    # Допускаем возврат для cancelled и refund_pending (после отмены оплаченной брони).
+    # Запрещаем только если уже refunded или истёк срок (там нечего возвращать).
+    if b.status in (BookingStatus.refunded.value, BookingStatus.expired.value):
         raise HTTPException(status_code=400, detail=f"Бронь в статусе {b.status} — возврат не нужен")
     user = db.get(User, b.user_id)
     if not user:

@@ -29,7 +29,8 @@ export default function RegisterPage() {
     setErr(null);
     try {
       await register(form);
-      nav(next, { replace: true });
+      // Сразу отправляем на подтверждение email — без него в аккаунт не пускаем
+      nav("/verify-email", { replace: true });
     } catch (e: any) {
       setErr(e.message || "Ошибка регистрации");
     } finally {

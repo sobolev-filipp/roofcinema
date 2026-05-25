@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type PaymentReceiptAdmin } from "../../api";
+import { useUI } from "../../ui";
 
 type Tab = "pending" | "approved" | "rejected";
 
@@ -14,6 +15,7 @@ const fmt = (iso: string) =>
   new Date(iso).toLocaleString("ru-RU", { dateStyle: "medium", timeStyle: "short" });
 
 export default function ReceiptsAdmin() {
+  const { confirm, notify } = useUI();
   const [tab, setTab] = useState<Tab>("pending");
   const [items, setItems] = useState<PaymentReceiptAdmin[]>([]);
   const [loading, setLoading] = useState(false);
@@ -35,30 +37,42 @@ export default function ReceiptsAdmin() {
   useEffect(() => { reload(); }, [tab]); // eslint-disable-line
 
   async function approve(r: PaymentReceiptAdmin) {
-    if (!window.confirm(`Подтвердить оплату по брони #${r.booking_id} на ${Number(r.booking_total_amount).toFixed(0)} ₽?`)) return;
+    const ok = await confirm({
+      title: "Подтвердить оплату?",
+      message: `Бронь #${r.booking_id} (${r.booking_full_name}) на ${Number(r.booking_total_amount).toFixed(0)} ₽ станет оплаченной.`,
+      confirmText: "Подтвердить",
+    });
+    if (!ok) return;
     setBusyId(r.id);
     try {
       await api.post(`/api/admin/receipts/${r.id}/approve`);
       await reload();
     } catch (e: any) {
-      alert(e.message);
+      await notify({ title: "Ошибка", message: e.message, kind: "error" });
     } finally {
       setBusyId(null);
     }
   }
 
-  async function reject(r: PaymentReceiptAdmin) {
-    const reason = window.prompt(
-      `Причина отказа по брони #${r.booking_id}:\n(текст увидит пользователь в письме и на странице брони)`,
-      "",
-    );
-    if (!reason || !reason.trim()) return;
+  const [rejectModal, setRejectModal] = useState<{ r: PaymentReceiptAdmin; reason: string } | null>(null);
+  async function startReject(r: PaymentReceiptAdmin) {
+    setRejectModal({ r, reason: "" });
+  }
+  async function submitReject() {
+    if (!rejectModal) return;
+    const reason = rejectModal.reason.trim();
+    if (!reason) {
+      await notify({ title: "Укажите причину", message: "Пользователь увидит этот текст в письме и на странице брони.", kind: "error" });
+      return;
+    }
+    const { r } = rejectModal;
+    setRejectModal(null);
     setBusyId(r.id);
     try {
-      await api.post(`/api/admin/receipts/${r.id}/reject`, { reason: reason.trim() });
+      await api.post(`/api/admin/receipts/${r.id}/reject`, { reason });
       await reload();
     } catch (e: any) {
-      alert(e.message);
+      await notify({ title: "Ошибка", message: e.message, kind: "error" });
     } finally {
       setBusyId(null);
     }
@@ -92,14 +106,27 @@ export default function ReceiptsAdmin() {
           {items.map((r) => (
             <div key={r.id} className="card receipt-card">
               <div className="receipt-thumb">
-                <a href={r.image_url} target="_blank" rel="noreferrer">
+                <button
+                  type="button"
+                  className="receipt-open-btn"
+                  onClick={() => window.open(r.image_url, "_blank", "noopener,noreferrer")}
+                  title="Открыть чек в новой вкладке"
+                >
                   {r.image_url.toLowerCase().endsWith(".pdf") ? (
                     <div className="pdf-thumb">PDF<br /><span className="muted" style={{ fontSize: 12 }}>открыть ↗</span></div>
                   ) : (
                     <img src={r.image_url} alt="чек" />
                   )}
-                </a>
+                </button>
               </div>
+              <button
+                type="button"
+                className="ghost"
+                style={{ fontSize: 12, width: "100%" }}
+                onClick={() => window.open(r.image_url, "_blank", "noopener,noreferrer")}
+              >
+                Открыть чек в новой вкладке ↗
+              </button>
 
               <div className="receipt-meta">
                 <div style={{ fontWeight: 600, fontSize: 15 }}>
@@ -147,7 +174,7 @@ export default function ReceiptsAdmin() {
                     </button>
                     <button
                       className="ghost danger-on-hover"
-                      onClick={() => reject(r)}
+                      onClick={() => startReject(r)}
                       disabled={busyId === r.id}
                     >
                       Отклонить
@@ -157,6 +184,30 @@ export default function ReceiptsAdmin() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {rejectModal && (
+        <div className="ui-backdrop" role="dialog" aria-modal="true" onClick={() => setRejectModal(null)}>
+          <div className="ui-dialog" style={{ maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
+            <h3 className="ui-dialog-title">Отклонить чек?</h3>
+            <div className="ui-dialog-body">
+              Бронь #{rejectModal.r.booking_id} ({rejectModal.r.booking_full_name}).
+              Укажите причину — пользователь получит её в письме и сможет загрузить новый чек.
+            </div>
+            <textarea
+              autoFocus
+              rows={3}
+              value={rejectModal.reason}
+              onChange={(e) => setRejectModal({ r: rejectModal.r, reason: e.target.value })}
+              placeholder="Например: оплата на другую карту / сумма меньше / неполный скриншот"
+              style={{ marginTop: 12, width: "100%" }}
+            />
+            <div className="ui-dialog-actions">
+              <button type="button" className="ghost" onClick={() => setRejectModal(null)}>Отмена</button>
+              <button type="button" className="primary danger" onClick={submitReject}>Отклонить</button>
+            </div>
+          </div>
         </div>
       )}
     </div>

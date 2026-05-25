@@ -16,6 +16,10 @@ import ScreeningsAdmin from "./pages/admin/ScreeningsAdmin";
 import BookingsAdmin from "./pages/admin/BookingsAdmin";
 import ReceiptsAdmin from "./pages/admin/ReceiptsAdmin";
 import PayoutTemplatesAdmin from "./pages/admin/PayoutTemplatesAdmin";
+import MessageTemplatesAdmin from "./pages/admin/MessageTemplatesAdmin";
+import ManualBookingAdmin from "./pages/admin/ManualBookingAdmin";
+import RefundsAdmin from "./pages/admin/RefundsAdmin";
+import RefundPage from "./pages/RefundPage";
 import ProfilePage from "./pages/ProfilePage";
 import EditProfilePage from "./pages/EditProfilePage";
 import SecurityPage from "./pages/SecurityPage";
@@ -27,6 +31,7 @@ import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 import InitialSetupPage from "./pages/InitialSetupPage";
 import AcceptInvitePage from "./pages/AcceptInvitePage";
+import ClaimPage from "./pages/ClaimPage";
 
 /** Если у пользователя стоит флаг requires_initial_setup — насильно отправляем на /initial-setup. */
 function SetupGuard() {
@@ -75,7 +80,7 @@ export default function App() {
               <Route path="/verify-email" element={<Protected><VerifyEmailPage /></Protected>} />
               <Route path="/bookings" element={<Protected><MyBookingsPage /></Protected>} />
               <Route path="/bookings/:id" element={<Protected><BookingPage /></Protected>} />
-              <Route path="/admin" element={<Protected role="super_admin"><AdminLayout /></Protected>}>
+              <Route path="/admin" element={<Protected role="admin"><AdminLayout /></Protected>}>
                 <Route index element={<Navigate to="cities" replace />} />
                 <Route path="cities" element={<CitiesAdmin />} />
                 <Route path="rooftops" element={<RooftopsAdmin />} />
@@ -87,8 +92,13 @@ export default function App() {
                 <Route path="bookings" element={<BookingsAdmin />} />
                 <Route path="receipts" element={<ReceiptsAdmin />} />
                 <Route path="payout-templates" element={<PayoutTemplatesAdmin />} />
+                <Route path="templates" element={<MessageTemplatesAdmin />} />
+                <Route path="manual-booking" element={<ManualBookingAdmin />} />
+                <Route path="refunds" element={<RefundsAdmin />} />
               </Route>
               <Route path="/invite/:token" element={<Protected><AcceptInvitePage /></Protected>} />
+              <Route path="/claim/:token" element={<ClaimPage />} />
+              <Route path="/refund/:token" element={<RefundPage />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </>

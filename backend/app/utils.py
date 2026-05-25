@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
+from typing import Any, Mapping
 
 try:
     from zoneinfo import ZoneInfo  # Python 3.9+
@@ -71,3 +72,53 @@ RU_TIMEZONES: list[dict[str, str]] = [
 
 
 RU_TZ_VALUES = {tz["value"] for tz in RU_TIMEZONES}
+
+
+# === Шаблоны сообщений ===
+
+# Какие плейсхолдеры доступны для каждого kind. Используется и backend'ом
+# (валидация/документация), и frontend'ом (показ кликабельных бейджей).
+TEMPLATE_PLACEHOLDERS: dict[str, list[str]] = {
+    "manual_booking": [
+        "{full_name}", "{movie}", "{starts_at}", "{rooftop}", "{city}",
+        "{amount}", "{booking_link}", "{claim_link}",
+    ],
+    "post_payment": [
+        "{full_name}", "{movie}", "{starts_at}", "{rooftop}", "{city}",
+        "{rooftop_address}", "{short_code}", "{qr_image_link}",
+    ],
+    "user_cancel_notice": [
+        "{full_name}", "{movie}", "{starts_at}", "{rooftop}", "{reason}",
+    ],
+    "admin_cancel_screening": [
+        "{full_name}", "{movie}", "{starts_at}", "{rooftop}", "{reason}",
+    ],
+    "refund_link": [
+        "{full_name}", "{movie}", "{amount}", "{refund_link}",
+    ],
+    "custom": [
+        "{full_name}", "{movie}", "{starts_at}", "{rooftop}", "{city}",
+        "{amount}", "{booking_link}", "{claim_link}", "{refund_link}", "{reason}",
+        "{short_code}", "{qr_image_link}",
+    ],
+}
+
+
+_PLACEHOLDER_RX = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}")
+
+
+def render_template(text: str, context: Mapping[str, Any]) -> str:
+    """Подставляет {key} в text значениями из context.
+    Неизвестные ключи остаются как есть (чтобы админ заметил опечатку).
+    None заменяется на пустую строку."""
+    if not text:
+        return ""
+
+    def repl(match: re.Match[str]) -> str:
+        key = match.group(1)
+        if key in context:
+            v = context[key]
+            return "" if v is None else str(v)
+        return match.group(0)
+
+    return _PLACEHOLDER_RX.sub(repl, text)

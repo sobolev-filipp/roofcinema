@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { api, type Movie, type PayoutTemplate, type Rooftop, type Screening, type SeatType } from "../../api";
+import { useUI } from "../../ui";
 
 type Alloc = { seat_type_id: number; price: number; count: number; capacity: number };
 
 export default function ScreeningsAdmin() {
+  const { confirm } = useUI();
   const [movies, setMovies] = useState<Movie[]>([]);
   const [rooftops, setRooftops] = useState<Rooftop[]>([]);
   const [screenings, setScreenings] = useState<Screening[]>([]);
@@ -76,7 +78,7 @@ export default function ScreeningsAdmin() {
   }
 
   async function remove(s: Screening) {
-    if (!window.confirm("Удалить показ?")) return;
+    if (!await confirm({ title: "Удалить показ?", message: "Брони на этот показ останутся, но станут «осиротевшими». Лучше скрыть, а не удалять.", confirmText: "Удалить показ", danger: true })) return;
     try { await api.del(`/api/screenings/${s.id}`); await reload(); }
     catch (e: any) { setErr(e.message); }
   }

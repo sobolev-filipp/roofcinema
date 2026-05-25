@@ -1526,6 +1526,21 @@ label {
 }
 .admin-tab:hover { color: var(--text); }
 .admin-tab.active { color: var(--text); border-bottom-color: var(--accent); }
+.admin-tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  margin-left: 6px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
 
 .btn-as-link {
   display: inline-flex;
@@ -1701,6 +1716,156 @@ label {
   color: var(--text-dim);
 }
 .receipt-meta { display: flex; flex-direction: column; }
+.receipt-open-btn {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  width: 100%;
+  cursor: zoom-in;
+}
+.receipt-open-btn img { display: block; }
+
+/* attendees list on booking page */
+.attendees-list { display: flex; flex-direction: column; gap: var(--s-2); }
+.attendee-row {
+  display: flex;
+  gap: var(--s-3);
+  align-items: flex-start;
+  padding: var(--s-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--bg-soft);
+  flex-wrap: wrap;
+}
+
+/* modal confirm/notify dialogs (вместо window.confirm/alert) */
+.ui-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: var(--s-4);
+  animation: ui-fade-in 0.12s ease-out;
+}
+@keyframes ui-fade-in { from { opacity: 0; } to { opacity: 1; } }
+.ui-dialog {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: var(--s-5);
+  width: 100%;
+  max-width: 440px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+  animation: ui-pop-in 0.16s ease-out;
+}
+@keyframes ui-pop-in { from { transform: translateY(8px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+.ui-dialog-title { margin: 0 0 var(--s-2); font-size: var(--fs-lg); }
+.ui-dialog-body { color: var(--text); font-size: var(--fs-sm); line-height: 1.45; }
+.ui-dialog-actions {
+  display: flex;
+  gap: var(--s-2);
+  justify-content: flex-end;
+  margin-top: var(--s-4);
+  flex-wrap: wrap;
+}
+.ui-dialog-error .ui-dialog-title { color: var(--err); }
+.ui-dialog-success .ui-dialog-title { color: var(--ok); }
+button.primary.danger {
+  background: var(--err);
+  border-color: var(--err);
+}
+button.primary.danger:hover { background: #c62828; border-color: #c62828; }
+
+/* user search autocomplete (manual booking) */
+.user-hits {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  margin-top: 4px;
+  max-height: 320px;
+  overflow-y: auto;
+  z-index: 30;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+.user-hit {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: var(--s-3);
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  cursor: pointer;
+}
+.user-hit:hover { background: var(--bg-soft); }
+.user-hit:last-child { border-bottom: 0; }
+
+/* message templates admin */
+.placeholder-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 6px;
+  margin: var(--s-2) 0;
+}
+.placeholder-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  text-align: left;
+  background: var(--bg-soft);
+  border: 1px dashed var(--border);
+  border-radius: var(--r-sm);
+  padding: 6px 10px;
+  cursor: pointer;
+  color: var(--text);
+  transition: color 0.1s, border-color 0.1s, background 0.1s;
+}
+.placeholder-item:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.placeholder-token {
+  font-family: monospace;
+  font-size: 12px;
+  color: var(--accent);
+  font-weight: 600;
+}
+.placeholder-hint {
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.2;
+}
+.templates-list { display: flex; flex-direction: column; gap: var(--s-3); margin-top: var(--s-2); }
+.template-card.template-default { border-color: var(--accent); }
+/* admin refunds list */
+.refunds-list { display: flex; flex-direction: column; gap: var(--s-3); margin-top: var(--s-2); }
+.refund-card .row.gap { flex-shrink: 0; }
+@media (max-width: 720px) {
+  .refund-card .row.gap { flex-direction: row !important; flex-wrap: wrap; }
+}
+
+.template-preview {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: monospace;
+  font-size: 12px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: var(--s-3);
+  max-height: 240px;
+  overflow-y: auto;
+  color: var(--text);
+}
 
 /* movie stills admin */
 .stills-admin-grid {

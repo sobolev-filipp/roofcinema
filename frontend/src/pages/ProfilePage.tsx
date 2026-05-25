@@ -77,8 +77,8 @@ export default function ProfilePage() {
         </Link>
         <Link to="/profile/tickets" className="profile-link-card card">
           <div>
-            <div className="pl-title">Оплаченные брони (билеты)</div>
-            <div className="muted" style={{ fontSize: 13 }}>QR-коды и адреса крыш</div>
+            <div className="pl-title">Мои QR-коды</div>
+            <div className="muted" style={{ fontSize: 13 }}>Оплаченные брони с QR для входа</div>
           </div>
           <span className="pl-arrow">→</span>
         </Link>

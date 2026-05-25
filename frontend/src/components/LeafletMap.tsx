@@ -64,12 +64,26 @@ export default function LeafletMap({ lat, lng, radiusM, exact = false, height = 
         maxZoom: approxMode ? 12 : 19,
         minZoom: approxMode ? 9 : 3,
         zoomControl: !approxMode,
+        attributionControl: true,
       }).setView([lat, lng], radiusM ? 12 : 15);
       mapRef.current = map;
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-        maxZoom: approxMode ? 12 : 19,
-      }).addTo(map);
+      // CARTO dark_all — тёмные тайлы под Netflix-дизайн, без политических плашек
+      // в attribution (которые показывает дефолтный OpenStreetMap).
+      const isRetina = typeof window !== "undefined" && window.devicePixelRatio > 1;
+      const r = isRetina ? "@2x" : "";
+      L.tileLayer(
+        `https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}${r}.png`,
+        {
+          attribution:
+            '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · <a href="https://carto.com/attributions">CARTO</a>',
+          subdomains: "abcd",
+          maxZoom: approxMode ? 12 : 19,
+        },
+      ).addTo(map);
+      // убираем дефолтную плашку "Leaflet" из attribution (оставляем только источники тайлов)
+      if (map.attributionControl) {
+        map.attributionControl.setPrefix(false);
+      }
 
       if (exact) {
         L.marker([lat, lng]).addTo(map);

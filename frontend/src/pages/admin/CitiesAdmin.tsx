@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { api, type City } from "../../api";
 import Autocomplete from "../../components/Autocomplete";
+import { useUI } from "../../ui";
 
 type CitySuggestion = { name: string; region: string; display: string };
 type Timezone = { value: string; label: string };
 
 export default function CitiesAdmin() {
+  const { confirm } = useUI();
   const [cities, setCities] = useState<City[]>([]);
   const [timezones, setTimezones] = useState<Timezone[]>([]);
   const [newCity, setNewCity] = useState({ name: "", timezone: "Europe/Moscow" });
@@ -37,7 +39,7 @@ export default function CitiesAdmin() {
     const msg = hasDeps
       ? `К городу «${c.name}» привязано ${info.rooftops} крыш(а) и ${info.screenings} показ(ов). Удалить вместе с ними?`
       : `Удалить «${c.name}»?`;
-    if (!window.confirm(msg)) return;
+    if (!await confirm({ title: "Удалить?", message: msg, confirmText: "Удалить", danger: true })) return;
     try {
       await api.del(`/api/cities/${c.id}${hasDeps ? "?force=true" : ""}`);
       await reload();

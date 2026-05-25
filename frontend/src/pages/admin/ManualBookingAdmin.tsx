@@ -1,0 +1,432 @@
+import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import {
+  api,
+  type Booking,
+  type MessageTemplate,
+  type Screening,
+  type UserSearchHit,
+} from "../../api";
+import { useDebouncedValue } from "../../lib/hooks";
+import { useUI } from "../../ui";
+
+const fmt = (iso: string) =>
+  new Date(iso).toLocaleString("ru-RU", { dateStyle: "medium", timeStyle: "short" });
+
+function isActiveScreening(s: Screening) {
+  return s.is_active && new Date(s.starts_at).getTime() > Date.now();
+}
+
+type Qty = Record<number, number>;
+
+const EMPTY_CONTACT = { full_name: "", email: "", phone: "", social_url: "", user_id: null as number | null };
+
+export default function ManualBookingAdmin() {
+  const { confirm, notify } = useUI();
+
+  const [screenings, setScreenings] = useState<Screening[]>([]);
+  const [screeningSearch, setScreeningSearch] = useState("");
+  const [screeningId, setScreeningId] = useState<number | null>(null);
+
+  const [contact, setContact] = useState(EMPTY_CONTACT);
+  const [userQuery, setUserQuery] = useState("");
+  const debouncedUserQuery = useDebouncedValue(userQuery, 300);
+  const [hits, setHits] = useState<UserSearchHit[]>([]);
+  const [showHits, setShowHits] = useState(false);
+
+  const [qty, setQty] = useState<Qty>({});
+  const [note, setNote] = useState("");
+  const [markPaid, setMarkPaid] = useState(false);
+
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const [createdBooking, setCreatedBooking] = useState<Booking | null>(null);
+  const [templates, setTemplates] = useState<MessageTemplate[]>([]);
+  const [copyStatus, setCopyStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.get<Screening[]>("/api/screenings?include_inactive=true").then(setScreenings);
+    api.get<MessageTemplate[]>("/api/admin/message-templates?kind=manual_booking")
+      .then(setTemplates).catch(() => setTemplates([]));
+  }, []);
+
+  // активные показы для пикера
+  const screeningsForPicker = useMemo(() => {
+    const list = screenings.filter(isActiveScreening);
+    const needle = screeningSearch.trim().toLowerCase();
+    if (!needle) return list;
+    return list.filter((s) =>
+      s.movie.title.toLowerCase().includes(needle) ||
+      s.rooftop.name.toLowerCase().includes(needle) ||
+      fmt(s.starts_at).toLowerCase().includes(needle)
+    );
+  }, [screenings, screeningSearch]);
+
+  const screening = useMemo(() => screenings.find((s) => s.id === screeningId) ?? null, [screenings, screeningId]);
+
+  // поиск пользователя
+  useEffect(() => {
+    const q = debouncedUserQuery.trim();
+    if (q.length < 2) { setHits([]); return; }
+    api.get<UserSearchHit[]>(`/api/admin/users/search?q=${encodeURIComponent(q)}`)
+      .then(setHits).catch(() => setHits([]));
+  }, [debouncedUserQuery]);
+
+  function selectHit(h: UserSearchHit) {
+    setContact({
+      full_name: h.full_name ?? "",
+      email: h.email ?? "",
+      phone: h.phone ?? "",
+      social_url: h.social_url ?? "",
+      user_id: h.user_id,
+    });
+    setShowHits(false);
+    setUserQuery("");
+  }
+
+  function setSeat(sstId: number, val: number) {
+    setQty((q) => ({ ...q, [sstId]: Math.max(0, val) }));
+  }
+
+  const totalSeats = useMemo(() => Object.values(qty).reduce((a, b) => a + b, 0), [qty]);
+  const totalGuests = useMemo(() => {
+    if (!screening) return 0;
+    return screening.seats.reduce((sum, sst) => sum + (qty[sst.id] ?? 0) * (sst.capacity ?? 1), 0);
+  }, [qty, screening]);
+  const totalAmount = useMemo(() => {
+    if (!screening) return 0;
+    return screening.seats.reduce((sum, sst) => sum + (qty[sst.id] ?? 0) * Number(sst.price), 0);
+  }, [qty, screening]);
+
+  async function submit() {
+    if (!screening) { setErr("Выберите показ"); return; }
+    const items = screening.seats
+      .map((sst) => ({ screening_seat_type_id: sst.id, qty: qty[sst.id] ?? 0 }))
+      .filter((it) => it.qty > 0);
+    if (items.length === 0) { setErr("Выберите хотя бы одно место"); return; }
+    if (!contact.full_name.trim() || !contact.email.trim()) {
+      setErr("Заполните ФИО и email"); return;
+    }
+    setBusy(true); setErr(null);
+    try {
+      const b = await api.post<Booking>("/api/admin/bookings/manual", {
+        screening_id: screening.id,
+        user_id: contact.user_id,
+        full_name: contact.full_name.trim(),
+        email: contact.email.trim(),
+        phone: contact.phone.trim() || null,
+        social_url: contact.social_url.trim() || null,
+        items,
+        note: note.trim() || null,
+        mark_as_paid: markPaid,
+      });
+      setCreatedBooking(b);
+    } catch (e: any) { setErr(e.message); }
+    finally { setBusy(false); }
+  }
+
+  function resetAll() {
+    setScreeningId(null);
+    setScreeningSearch("");
+    setContact(EMPTY_CONTACT);
+    setUserQuery("");
+    setHits([]);
+    setQty({});
+    setNote("");
+    setMarkPaid(false);
+    setCreatedBooking(null);
+    setCopyStatus(null);
+    setErr(null);
+  }
+
+  // отрисовка шаблона + копирование в буфер
+  async function copyMessage() {
+    if (!createdBooking) return;
+    const defaultTpl = templates.find((t) => t.is_default) ?? templates[0];
+    if (!defaultTpl) {
+      const ok = await confirm({
+        title: "Нет шаблона",
+        message: "Создайте шаблон типа «Ручное бронирование» в разделе «Шаблоны».",
+        confirmText: "Перейти к шаблонам",
+        cancelText: "Закрыть",
+      });
+      if (ok) window.location.href = "/admin/templates";
+      return;
+    }
+    const info = createdBooking.screening_info!;
+    const ctx = {
+      full_name: createdBooking.full_name,
+      movie: info.movie_title,
+      starts_at: fmt(info.starts_at),
+      rooftop: info.rooftop_name,
+      city: info.city_name,
+      amount: Number(createdBooking.total_amount).toFixed(0),
+      booking_link: `${window.location.origin}/bookings/${createdBooking.id}`,
+      claim_link: "",  // у главного брони нет claim — используется booking_link
+    };
+    try {
+      const res = await api.post<{ rendered: string }>("/api/admin/message-templates/preview", {
+        text: defaultTpl.text,
+        context: ctx,
+      });
+      await navigator.clipboard.writeText(res.rendered);
+      setCopyStatus("Скопировано в буфер");
+      setTimeout(() => setCopyStatus(null), 2500);
+    } catch (e: any) {
+      await notify({ title: "Не удалось", message: e.message, kind: "error" });
+    }
+  }
+
+  // === результат после создания ===
+  if (createdBooking) {
+    const info = createdBooking.screening_info!;
+    const defaultTpl = templates.find((t) => t.is_default) ?? templates[0];
+    return (
+      <div>
+        <h2 style={{ marginTop: 16 }}>Бронь создана ✓</h2>
+        <div className="card" style={{ marginTop: 16 }}>
+          <div className="row between" style={{ flexWrap: "wrap", gap: 12 }}>
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 600 }}>{info.movie_title}</div>
+              <div className="muted" style={{ fontSize: 13 }}>{fmt(info.starts_at)} · {info.rooftop_name}</div>
+              <div style={{ marginTop: 6 }}>
+                Гость: <b>{createdBooking.full_name}</b>{" "}
+                <span className="muted">({createdBooking.email})</span>
+              </div>
+              <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                код брони: {createdBooking.short_code} · {Number(createdBooking.total_amount).toFixed(0)} ₽ ·{" "}
+                статус: {createdBooking.status === "paid" ? "оплачено" : "ждёт оплаты"}
+              </div>
+            </div>
+            <Link to={`/bookings/${createdBooking.id}`} className="btn-as-link primary">
+              Открыть бронь →
+            </Link>
+          </div>
+        </div>
+
+        <div className="card" style={{ marginTop: 12 }}>
+          <h3 style={{ marginTop: 0 }}>Сообщение пользователю</h3>
+          {defaultTpl ? (
+            <>
+              <p className="muted" style={{ fontSize: 13 }}>
+                Используется шаблон по умолчанию: <b>{defaultTpl.name}</b>.
+                Текст будет скопирован в буфер с подставленными данными — отправьте его в Telegram/WhatsApp/SMS.
+              </p>
+              <div className="row gap" style={{ marginTop: 10, flexWrap: "wrap", alignItems: "center" }}>
+                <button className="primary" onClick={copyMessage}>📋 Скопировать сообщение</button>
+                {copyStatus && <span className="badge accent">{copyStatus}</span>}
+                <Link to="/admin/templates" className="ghost btn-as-link">Редактировать шаблоны</Link>
+              </div>
+            </>
+          ) : (
+            <div className="hint-box">
+              Шаблона типа «Ручное бронирование» ещё нет.
+              <Link to="/admin/templates" className="rooftop-link" style={{ marginLeft: 6 }}>
+                Создать в разделе «Шаблоны» →
+              </Link>
+            </div>
+          )}
+        </div>
+
+        <div className="row gap" style={{ marginTop: 16 }}>
+          <button className="primary" onClick={resetAll}>+ Создать ещё одну</button>
+        </div>
+      </div>
+    );
+  }
+
+  // === форма создания ===
+  return (
+    <div>
+      <h2 style={{ marginTop: 16 }}>Ручное бронирование</h2>
+      <p className="muted" style={{ fontSize: 13, marginTop: 4 }}>
+        Создайте бронь от имени пользователя — например, если он написал в личку. После создания
+        вы получите готовое сообщение со ссылкой, которое можно скопировать и отправить ему.
+      </p>
+
+      {err && <div className="error" style={{ marginTop: 12 }}>{err}</div>}
+
+      {/* 1. Выбор показа */}
+      <div className="card" style={{ marginTop: 16 }}>
+        <h3 style={{ marginTop: 0 }}>1. Выберите показ</h3>
+        <div className="field">
+          <label>Поиск (фильм, крыша, дата)</label>
+          <input
+            value={screeningSearch}
+            onChange={(e) => setScreeningSearch(e.target.value)}
+            placeholder="Например: Лофт «Небо»"
+          />
+        </div>
+        {screeningsForPicker.length === 0 ? (
+          <div className="empty">Активных показов не найдено.</div>
+        ) : (
+          <div className="screening-picker">
+            {screeningsForPicker.slice(0, 20).map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                className={"screening-picker-item" + (s.id === screeningId ? " active" : "")}
+                onClick={() => setScreeningId(s.id)}
+              >
+                <div className="sp-title">{s.movie.title}</div>
+                <div className="sp-meta">{fmt(s.starts_at)} · {s.rooftop.name}</div>
+              </button>
+            ))}
+            {screeningsForPicker.length > 20 && (
+              <div className="muted" style={{ fontSize: 12 }}>Показано 20 из {screeningsForPicker.length}.</div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {screening && (
+        <>
+          {/* 2. Поиск/выбор пользователя */}
+          <div className="card" style={{ marginTop: 16, position: "relative" }}>
+            <h3 style={{ marginTop: 0 }}>2. Контакты пользователя</h3>
+            <p className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
+              Введите email/телефон/ФИО — найдём в аккаунтах и в прошлых бронях. Клик по подсказке заполнит все поля.
+            </p>
+            <div className="field" style={{ position: "relative" }}>
+              <label>Поиск</label>
+              <input
+                value={userQuery}
+                onChange={(e) => { setUserQuery(e.target.value); setShowHits(true); }}
+                onFocus={() => setShowHits(true)}
+                placeholder="email@... или +7..."
+              />
+              {showHits && hits.length > 0 && (
+                <div className="user-hits">
+                  {hits.map((h, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      className="user-hit"
+                      onClick={() => selectHit(h)}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                        <b>{h.full_name || h.email || "—"}</b>
+                        <span className="badge accent" style={{ fontSize: 10 }}>
+                          {h.source === "user" ? "Аккаунт" : "Только из броней"}
+                        </span>
+                      </div>
+                      <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
+                        {h.email}
+                        {h.phone && ` · ${h.phone}`}
+                      </div>
+                      {h.booking_count > 0 && (
+                        <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>
+                          броней: {h.booking_count}
+                          {h.last_booking_at && ` · последняя ${fmt(h.last_booking_at)}`}
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {contact.user_id && (
+              <div className="hint-box" style={{ marginBottom: 12, fontSize: 13 }}>
+                ✓ Привязано к аккаунту #{contact.user_id} — бронь появится в его «Мои брони».
+                {" "}
+                <button type="button" className="rooftop-link" style={{ background: "none", border: 0, padding: 0, cursor: "pointer" }}
+                  onClick={() => setContact({ ...contact, user_id: null })}>
+                  Отвязать
+                </button>
+              </div>
+            )}
+
+            <div className="row gap" style={{ flexWrap: "wrap" }}>
+              <div className="field" style={{ flex: 1, minWidth: 200 }}>
+                <label>ФИО *</label>
+                <input required value={contact.full_name} onChange={(e) => setContact({ ...contact, full_name: e.target.value })} />
+              </div>
+              <div className="field" style={{ flex: 1, minWidth: 200 }}>
+                <label>Email *</label>
+                <input type="email" required value={contact.email} onChange={(e) => setContact({ ...contact, email: e.target.value })} />
+              </div>
+            </div>
+            <div className="row gap" style={{ flexWrap: "wrap" }}>
+              <div className="field" style={{ flex: 1, minWidth: 200 }}>
+                <label>Телефон</label>
+                <input value={contact.phone} onChange={(e) => setContact({ ...contact, phone: e.target.value })} placeholder="+7..." />
+              </div>
+              <div className="field" style={{ flex: 1, minWidth: 200 }}>
+                <label>Соцсеть</label>
+                <input value={contact.social_url} onChange={(e) => setContact({ ...contact, social_url: e.target.value })} placeholder="https://t.me/..." />
+              </div>
+            </div>
+          </div>
+
+          {/* 3. Места */}
+          <div className="card" style={{ marginTop: 16 }}>
+            <h3 style={{ marginTop: 0 }}>3. Места</h3>
+            {screening.seats.length === 0 ? (
+              <div className="muted">У этого показа не настроены типы мест.</div>
+            ) : (
+              <div className="seat-list">
+                {screening.seats.map((sst) => {
+                  const q = qty[sst.id] ?? 0;
+                  const available = sst.seats_available ?? sst.count;
+                  const cap = sst.capacity ?? 1;
+                  return (
+                    <div key={sst.id} className="seat-row">
+                      <div className="seat-info">
+                        <div className="seat-name">
+                          {sst.name}
+                          {cap > 1 && <span className="badge accent" style={{ marginLeft: 8, fontSize: 11 }}>{cap} гостя/место</span>}
+                        </div>
+                        <div className="muted" style={{ fontSize: 12 }}>
+                          {Number(sst.price).toFixed(0)} ₽ · осталось {available} из {sst.count}
+                        </div>
+                      </div>
+                      <div className="qty-controls">
+                        <button type="button" onClick={() => setSeat(sst.id, q - 1)} disabled={q <= 0}>−</button>
+                        <span className="qty-value">{q}</span>
+                        <button type="button" onClick={() => setSeat(sst.id, q + 1)} disabled={q >= available}>+</button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {totalSeats > 0 && (
+              <div className="booking-total">
+                <span>
+                  {totalSeats} {totalSeats === 1 ? "место" : totalSeats < 5 ? "места" : "мест"}
+                  {totalGuests !== totalSeats && (
+                    <span className="muted" style={{ marginLeft: 6, fontSize: 13 }}>
+                      · {totalGuests} {totalGuests === 1 ? "гость" : totalGuests < 5 ? "гостя" : "гостей"}
+                    </span>
+                  )}
+                </span>
+                <span className="total-amount">{totalAmount.toFixed(0)} ₽</span>
+              </div>
+            )}
+          </div>
+
+          {/* 4. Заметка + опции */}
+          <div className="card" style={{ marginTop: 16 }}>
+            <h3 style={{ marginTop: 0 }}>4. Подтверждение</h3>
+            <div className="field">
+              <label>Внутренняя заметка (только для админа)</label>
+              <textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
+            </div>
+            <label className="checkbox">
+              <input type="checkbox" checked={markPaid} onChange={(e) => setMarkPaid(e.target.checked)} />
+              <span>Сразу пометить оплаченной (оплата уже получена другим способом)</span>
+            </label>
+            <div className="row gap" style={{ marginTop: 16, justifyContent: "flex-end" }}>
+              <button className="ghost" onClick={resetAll} disabled={busy}>Очистить</button>
+              <button className="primary" onClick={submit} disabled={busy || totalSeats === 0}>
+                {busy ? "Создание..." : `Создать бронь на ${totalAmount.toFixed(0)} ₽`}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}

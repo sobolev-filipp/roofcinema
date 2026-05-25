@@ -12,8 +12,9 @@ from .db import Base, SessionLocal, engine
 from .email_service import send_booking_window_opened
 from .models import Rooftop, Screening, ScreeningBookingNotify, User, UserRole
 from .routers import (
-    auth, bookings, cities, geocode, movie_search, movies, payout_templates,
-    receipts, rooftops, screening_notify, screenings, seat_types, uploads, users, ws,
+    admin_bookings, attendees, auth, bookings, cities, geocode, message_templates,
+    movie_search, movies, payout_templates, receipts, refunds, rooftops,
+    screening_notify, screenings, seat_types, uploads, users, ws,
 )
 from .security import hash_password
 from .utils import now_in_tz
@@ -29,10 +30,18 @@ log = logging.getLogger("notify-loop")
 def _ensure_super_admin(db: Session) -> None:
     """Создаёт владельца, если его нет. Если пароль всё ещё дефолтный из .env —
     выставляет флаг requires_initial_setup, чтобы при первом входе заставить
-    поменять email + пароль и подтвердить новый email."""
+    поменять email + пароль и подтвердить новый email.
+
+    БЕЗОПАСНОСТЬ: если хотя бы один super_admin уже завершил первичную настройку
+    (requires_initial_setup=False), новый пользователь с дефолтными credentials
+    НЕ создаётся — даже если email в .env больше не совпадает с текущим email
+    администратора (он мог сменить его через initial-setup).
+    """
     from datetime import datetime
     from .security import verify_password
     settings = get_settings()
+
+    # 1. Ищем запись с текущим email из .env
     existing = db.query(User).filter(User.email == settings.SUPER_ADMIN_EMAIL).first()
     if existing:
         if existing.role != UserRole.super_admin.value:
@@ -46,6 +55,19 @@ def _ensure_super_admin(db: Session) -> None:
             existing.email_verified_at = datetime.utcnow()
         db.commit()
         return
+
+    # 2. Email из .env не найден — значит владелец уже сменил его через initial-setup.
+    #    Если хоть один super_admin существует в базе, создавать новый аккаунт с
+    #    дефолтными credentials категорически нельзя (дыра в безопасности).
+    #    Это покрывает и случай «email сменён, но верификация ещё не пройдена».
+    any_super_admin = db.query(User).filter(
+        User.role == UserRole.super_admin.value,
+    ).first()
+    if any_super_admin:
+        # Хотя бы один super_admin есть — ничего не делаем.
+        return
+
+    # 3. Нет ни одного настроенного super_admin — первый запуск, создаём владельца.
     owner = User(
         email=settings.SUPER_ADMIN_EMAIL,
         password_hash=hash_password(settings.SUPER_ADMIN_PASSWORD),
@@ -170,8 +192,12 @@ app.include_router(seat_types.router)
 app.include_router(screenings.router)
 app.include_router(screening_notify.router)
 app.include_router(bookings.router)
+app.include_router(attendees.router)
 app.include_router(receipts.router)
 app.include_router(payout_templates.router)
+app.include_router(message_templates.router)
+app.include_router(admin_bookings.router)
+app.include_router(refunds.router)
 app.include_router(uploads.router)
 app.include_router(geocode.router)
 app.include_router(ws.router)

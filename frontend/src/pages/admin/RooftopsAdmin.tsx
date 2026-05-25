@@ -2,10 +2,12 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type City, type Rooftop } from "../../api";
 import Autocomplete from "../../components/Autocomplete";
+import { useUI } from "../../ui";
 
 type AddressSuggestion = { address: string; lat: number; lng: number; display: string; full_display: string };
 
 export default function RooftopsAdmin() {
+  const { confirm } = useUI();
   const [cities, setCities] = useState<City[]>([]);
   const [rooftops, setRooftops] = useState<Rooftop[]>([]);
   const [newRoof, setNewRoof] = useState({
@@ -38,7 +40,7 @@ export default function RooftopsAdmin() {
   }
 
   async function deleteRoof(r: Rooftop) {
-    if (!window.confirm(`Удалить крышу «${r.name}»? Это удалит все её показы и связи.`)) return;
+    if (!await confirm({ title: `Удалить крышу «${r.name}»?`, message: "Удалятся все её показы и связи. Действие необратимо.", confirmText: "Удалить крышу", danger: true })) return;
     try {
       await api.del(`/api/rooftops/${r.id}`);
       await reload();

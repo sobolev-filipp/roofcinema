@@ -6,6 +6,7 @@ from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from ..db import get_db
@@ -166,6 +167,33 @@ async def upload_receipt(
 # === админ-эндпоинты ===
 
 @router.get(
+    "/api/admin/receipts/pending-count",
+    dependencies=[Depends(require_admin_or_super)],
+)
+def pending_count(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_admin_or_super),
+):
+    """Сколько чеков ждут проверки. Для бейджа в админ-навигации."""
+    q = db.query(func.count(PaymentReceipt.id)).filter(
+        PaymentReceipt.status == PaymentReceiptStatus.pending.value
+    )
+    if user.role == UserRole.admin.value:
+        rooftop_ids = [
+            r.rooftop_id for r in db.query(RooftopAdmin).filter(
+                RooftopAdmin.user_id == user.id,
+                RooftopAdmin.can_approve_payments.is_(True),
+            ).all()
+        ]
+        if not rooftop_ids:
+            return {"count": 0}
+        q = q.join(Booking, PaymentReceipt.booking_id == Booking.id) \
+             .join(Screening, Booking.screening_id == Screening.id) \
+             .filter(Screening.rooftop_id.in_(rooftop_ids))
+    return {"count": int(q.scalar() or 0)}
+
+
+@router.get(
     "/api/admin/receipts",
     response_model=list[PaymentReceiptAdminOut],
     dependencies=[Depends(require_admin_or_super)],
@@ -292,13 +320,22 @@ def reject_receipt(
     if not _admin_can_review(db, user, r.booking):
         raise HTTPException(status_code=403, detail="Нет прав на чеки этой крыши")
 
+    now = datetime.utcnow()
+    b = r.booking
+    # Если бронь ещё ждёт оплаты — продлеваем срок на длительность проверки чека
+    # (время «на паузе»). Тем самым таймер у пользователя возобновится с того же
+    # значения, на котором остановился при загрузке чека.
+    if b.status == BookingStatus.waiting_payment.value and r.uploaded_at:
+        paused_for = now - r.uploaded_at
+        if paused_for.total_seconds() > 0:
+            b.expires_at = b.expires_at + paused_for
+
     r.status = PaymentReceiptStatus.rejected.value
-    r.reviewed_at = datetime.utcnow()
+    r.reviewed_at = now
     r.reviewed_by_id = user.id
     r.rejection_reason = payload.reason.strip()
     db.commit()
 
-    b = r.booking
     _broadcast(b.screening_id, b.id)
 
     movie_title = b.screening.movie.title if b.screening and b.screening.movie else ""

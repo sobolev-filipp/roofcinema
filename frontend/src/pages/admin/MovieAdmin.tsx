@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, getToken, type Movie, type MovieStill } from "../../api";
 import ImageUpload from "../../components/ImageUpload";
+import { useUI } from "../../ui";
 
 type ExternalHit = {
   source: "kinopoisk" | "omdb";
@@ -90,6 +91,7 @@ function formToPayload(f: FormState) {
 }
 
 export default function MovieAdmin() {
+  const { confirm } = useUI();
   const { id } = useParams();
   const nav = useNavigate();
   const isNew = !id;
@@ -152,7 +154,7 @@ export default function MovieAdmin() {
 
   async function removeStill(s: MovieStill) {
     if (!id) return;
-    if (!window.confirm("Удалить этот кадр?")) return;
+    if (!await confirm({ title: "Удалить кадр?", message: "Этот кадр удалится из карточки фильма.", confirmText: "Удалить", danger: true })) return;
     try {
       await api.del(`/api/movies/${id}/stills/${s.id}`);
       setStills(stills.filter((x) => x.id !== s.id));
@@ -196,7 +198,7 @@ export default function MovieAdmin() {
 
   async function remove() {
     if (!id) return;
-    if (!window.confirm("Удалить фильм? Все его показы тоже удалятся.")) return;
+    if (!await confirm({ title: "Удалить фильм?", message: "Все его показы тоже будут удалены. Действие необратимо.", confirmText: "Удалить фильм", danger: true })) return;
     try {
       await api.del(`/api/movies/${id}`);
       nav("/admin/movies");

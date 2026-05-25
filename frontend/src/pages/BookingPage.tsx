@@ -2,9 +2,12 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, type Booking, type Screening } from "../api";
 import { useAuth } from "../auth";
+import AdminTemplateCopyBox from "../components/AdminTemplateCopyBox";
 import BalancePaymentBox from "../components/BalancePaymentBox";
+import BookingAttendeesBox from "../components/BookingAttendeesBox";
 import ReceiptUploadBox from "../components/ReceiptUploadBox";
 import { STATUS_COLOR, STATUS_LABELS, formatCountdown, msUntil, parseUtc } from "../lib/bookingStatus";
+import { useUI } from "../ui";
 
 const fmt = (iso: string) =>
   new Date(iso).toLocaleString("ru-RU", { dateStyle: "long", timeStyle: "short" });
@@ -15,6 +18,7 @@ export default function BookingPage() {
   const { id } = useParams();
   const nav = useNavigate();
   const { user, refresh } = useAuth();
+  const { confirm } = useUI();
   const [booking, setBooking] = useState<Booking | null>(null);
   const [screening, setScreening] = useState<Screening | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -48,9 +52,19 @@ export default function BookingPage() {
   const isWaiting = booking.status === "waiting_payment";
   const isPaid = booking.status === "paid" || booking.status === "paid_by_balance" || booking.status === "attended";
   const isAdmin = user?.role === "super_admin" || user?.role === "admin";
+  const pendingReceipt = booking.receipts.find((r) => r.status === "pending") ?? null;
+  // Пока чек на проверке — таймер заморожен. После reject backend продлит expires_at
+  // на длительность проверки, и отсчёт продолжится с того же значения.
+  const isPausedForReceipt = isWaiting && pendingReceipt !== null;
 
   async function cancel() {
-    if (!window.confirm("Отменить бронь?")) return;
+    const ok = await confirm({
+      title: "Отменить бронь?",
+      message: "Места освободятся. Если оплата уже была — возврат запросите у организатора.",
+      confirmText: "Отменить бронь",
+      danger: true,
+    });
+    if (!ok) return;
     setBusy(true);
     try {
       const b = await api.post<Booking>(`/api/bookings/${id}/cancel`);
@@ -60,7 +74,12 @@ export default function BookingPage() {
   }
 
   async function markPaid() {
-    // временно: админ помечает оплаченным. В Фазе 5 — нормальная загрузка чека.
+    const ok = await confirm({
+      title: "Пометить оплаченной?",
+      message: "Бронь перейдёт в статус «Оплачено» вручную, без проверки чека.",
+      confirmText: "Пометить оплаченной",
+    });
+    if (!ok) return;
     setBusy(true);
     try {
       const b = await api.post<Booking>(`/api/bookings/${id}/mark-paid`);
@@ -95,20 +114,43 @@ export default function BookingPage() {
               <div className="muted" style={{ fontSize: 14, marginTop: 4 }}>
                 {info.city_name} · <Link to={`/rooftops/${info.rooftop_id}`} className="rooftop-link">{info.rooftop_name}</Link>
               </div>
-              <div className="status-pill" style={{ marginTop: 10, borderColor: STATUS_COLOR[booking.status], color: STATUS_COLOR[booking.status] }}>
-                {STATUS_LABELS[booking.status]}
-              </div>
+              {isPausedForReceipt ? (
+                <div
+                  className="status-pill"
+                  style={{ marginTop: 10, borderColor: "#e9b949", color: "#e9b949" }}
+                  title="Чек загружен, ждём решения администратора. Таймер брони заморожен."
+                >
+                  На проверке оплаты
+                </div>
+              ) : (
+                <div
+                  className="status-pill"
+                  style={{ marginTop: 10, borderColor: STATUS_COLOR[booking.status], color: STATUS_COLOR[booking.status] }}
+                >
+                  {STATUS_LABELS[booking.status]}
+                </div>
+              )}
             </div>
           </div>
         </div>
       </div>
 
-      {isWaiting && (
+      {isWaiting && !isPausedForReceipt && (
         <div className="card timer-card">
           <div className="muted" style={{ fontSize: 13 }}>До истечения брони</div>
           <div className="timer-value">{formatCountdown(remainingMs)}</div>
           <div className="muted" style={{ fontSize: 12 }}>
             После {fmtUtc(booking.expires_at)} места освободятся, и бронь нужно будет создать заново.
+          </div>
+        </div>
+      )}
+      {isPausedForReceipt && (
+        <div className="card timer-card" style={{ borderColor: "#e9b949" }}>
+          <div className="muted" style={{ fontSize: 13 }}>Таймер брони на паузе</div>
+          <div className="timer-value" style={{ color: "#e9b949" }}>⏸ {formatCountdown(remainingMs)}</div>
+          <div className="muted" style={{ fontSize: 12 }}>
+            Чек ждёт проверки администратора. Если оплата подтвердится — бронь станет оплаченной.
+            Если откажут — таймер продолжится с этого же значения.
           </div>
         </div>
       )}
@@ -204,10 +246,30 @@ export default function BookingPage() {
       )}
 
       {isPaid && (
-        <div className="hint-box" style={{ marginTop: 12 }}>
-          Бронь оплачена. QR-билет для входа доступен в разделе <Link to="/profile" className="rooftop-link">«Профиль»</Link> (Фаза 4).
-          Точный адрес крыши теперь открыт на её странице.
+        <div className="card" style={{ marginTop: 12 }}>
+          <div className="row between" style={{ flexWrap: "wrap", gap: 12, alignItems: "center" }}>
+            <div style={{ flex: 1, minWidth: 220 }}>
+              <h3 style={{ margin: 0 }}>Бронь оплачена</h3>
+              <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>
+                Точный адрес крыши открыт на её странице. Для прохода покажите QR-код или назовите код ниже.
+              </div>
+            </div>
+            <Link to="/profile/tickets" className="btn-as-link primary">Открыть мой QR-код →</Link>
+          </div>
+          {user && booking.user_id === user.id && booking.status !== "attended" && (
+            <div className="row gap" style={{ marginTop: 12, justifyContent: "flex-end" }}>
+              <button className="ghost danger-on-hover" onClick={cancel} disabled={busy}>
+                Отменить бронь
+              </button>
+            </div>
+          )}
         </div>
+      )}
+
+      {isAdmin && <AdminTemplateCopyBox booking={booking} />}
+
+      {user && booking.user_id === user.id && (
+        <BookingAttendeesBox booking={booking} onChange={setBooking} />
       )}
 
       <div className="card" style={{ marginTop: 12 }}>

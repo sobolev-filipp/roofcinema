@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api, type City, type Rooftop, type SeatType } from "../../api";
 import Autocomplete from "../../components/Autocomplete";
+import { useUI } from "../../ui";
 
 type AddressSuggestion = { address: string; lat: number; lng: number; display: string; full_display: string };
 type InviteOut = {
@@ -10,6 +11,7 @@ type InviteOut = {
 };
 
 export default function RooftopAdmin() {
+  const { confirm } = useUI();
   const { id } = useParams();
   const rooftopId = Number(id);
   const nav = useNavigate();
@@ -67,8 +69,8 @@ export default function RooftopAdmin() {
   }
 
   async function deleteSt(st: SeatType) {
-    const confirmMsg = `Удалить тип «${st.name}»? Если он уже используется в показах — будет деактивирован, исторические показы сохранят его.`;
-    if (!window.confirm(confirmMsg)) return;
+    const confirmMsg = `Если он уже используется в показах — будет деактивирован, исторические показы сохранят его. Иначе удалится полностью.`;
+    if (!await confirm({ title: `Удалить тип «${st.name}»?`, message: confirmMsg, confirmText: "Удалить", danger: true })) return;
     try {
       const res = await api.del<{ deleted: boolean; deactivated: boolean; in_use_count: number }>(
         `/api/rooftops/${rooftopId}/seat-types/${st.id}`

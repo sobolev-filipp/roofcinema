@@ -87,6 +87,38 @@ def send_booking_window_opened(email: str, movie_title: str, starts_at_text: str
     send_email(email, "Открылось бронирование — Кино на крыше", body)
 
 
+def send_attendee_invite(
+    email: str,
+    movie_title: str,
+    starts_at_text: str,
+    rooftop_name: str,
+    guests_count: int,
+    claim_url: str,
+    short_code: str,
+    main_booker_name: str,
+    is_paid: bool,
+) -> None:
+    """Письмо гостю, на которого «разделили» часть брони.
+    Если бронь оплачена — присылаем код входа; иначе только инфу и ссылку."""
+    payment_line = (
+        f"Код для входа (если QR не считается): {short_code}"
+        if is_paid
+        else "Билет станет активен, когда организатор подтвердит оплату — мы вышлем повторное письмо с QR."
+    )
+    body = (
+        f"Здравствуйте!\n\n"
+        f"{main_booker_name} пригласил(а) вас на показ:\n"
+        f"  {movie_title}\n"
+        f"  Начало: {starts_at_text}\n"
+        f"  Место: {rooftop_name}\n"
+        f"  Гостей по этой брони: {guests_count}\n\n"
+        f"Ваш билет (откройте ссылку — её можно сохранить или привязать к аккаунту):\n"
+        f"{claim_url}\n\n"
+        f"{payment_line}\n"
+    )
+    send_email(email, "Вас пригласили на показ — Кино на крыше", body)
+
+
 def send_payment_rejected(email: str, movie_title: str, booking_id: int, reason: str) -> None:
     body = (
         f"Здравствуйте!\n\n"

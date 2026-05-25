@@ -302,6 +302,101 @@ class ScreeningNotifyOut(BaseModel):
     notified_at: datetime | None = None
 
 
+# === Шаблоны сообщений (Этап C) ===
+
+ALLOWED_TEMPLATE_KINDS = (
+    "manual_booking",
+    "post_payment",
+    "user_cancel_notice",
+    "admin_cancel_screening",
+    "refund_link",
+    "custom",
+)
+
+
+class MessageTemplateIn(BaseModel):
+    kind: str = Field(min_length=1, max_length=32)
+    name: str = Field(min_length=1, max_length=255)
+    text: str = Field(min_length=1)
+    is_default: bool = False
+
+
+class MessageTemplateUpdateIn(BaseModel):
+    name: str | None = Field(default=None, max_length=255)
+    text: str | None = None
+    is_default: bool | None = None
+
+
+class MessageTemplateOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    kind: str
+    name: str
+    text: str
+    is_default: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class RenderRequest(BaseModel):
+    """Запрос на предпросмотр шаблона с контекстом (для preview в админке)."""
+    text: str
+    context: dict[str, str | int | float | None] = Field(default_factory=dict)
+
+
+class RenderResponse(BaseModel):
+    rendered: str
+
+
+# === Возврат средств (Этап E) ===
+
+class RefundRequestOut(BaseModel):
+    """Запись запроса возврата для админа."""
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    booking_id: int
+    status: str
+    amount: float
+    payout_full_name: str | None = None
+    payout_card_or_sbp: str | None = None
+    payout_bank: str | None = None
+    payout_comment: str | None = None
+    created_at: datetime
+    link_sent_at: datetime | None = None
+    filled_at: datetime | None = None
+    completed_at: datetime | None = None
+    # дополнительные поля для админ-списка
+    payout_url: str = ""
+    booking_full_name: str = ""
+    booking_email: str = ""
+    movie_title: str = ""
+    screening_starts_at: datetime | None = None
+    rooftop_name: str = ""
+
+
+class RefundClaimOut(BaseModel):
+    """Публичная инфа по /api/refund/{token}: что увидит пользователь."""
+    status: str
+    amount: float
+    movie_title: str
+    screening_starts_at: datetime
+    rooftop_name: str
+    main_booker_name: str
+    # ранее введённые значения, если форма уже частично заполнена
+    payout_full_name: str | None = None
+    payout_card_or_sbp: str | None = None
+    payout_bank: str | None = None
+    payout_comment: str | None = None
+    completed_at: datetime | None = None
+
+
+class RefundSubmitIn(BaseModel):
+    payout_full_name: str = Field(min_length=1, max_length=255)
+    payout_card_or_sbp: str = Field(min_length=4, max_length=64, description="Номер карты или телефон СБП")
+    payout_bank: str | None = Field(default=None, max_length=120)
+    payout_comment: str | None = None
+
+
 class BookingItemIn(BaseModel):
     screening_seat_type_id: int
     qty: int = Field(ge=1, le=20)
@@ -372,6 +467,51 @@ class PaymentReceiptRejectIn(BaseModel):
     reason: str = Field(min_length=1, max_length=500)
 
 
+class BookingAttendeeOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    booking_id: int
+    email: str
+    full_name: str | None = None
+    guests_count: int
+    short_code: str
+    qr_token: str
+    claim_url: str = ""  # /claim/{claim_token} — заполняем в роутере
+    claimed_by_user_id: int | None = None
+    claimed_at: datetime | None = None
+    notified_at: datetime | None = None
+    created_at: datetime
+
+
+class BookingAttendeeIn(BaseModel):
+    email: EmailStr
+    full_name: str | None = Field(default=None, max_length=255)
+    guests_count: int = Field(ge=1, le=20)
+
+
+class ClaimInfoOut(BaseModel):
+    """Публичная инфа по магической ссылке /claim/{token}.
+
+    QR/код видны только если бронь оплачена; иначе показываем статус «ожидает оплаты»."""
+    attendee_id: int
+    email: str
+    full_name: str | None
+    guests_count: int
+    short_code: str | None  # None если бронь ещё не оплачена и QR показывать нельзя
+    qr_token: str | None
+    is_paid: bool
+    booking_status: str
+    main_booker_full_name: str
+    movie_title: str
+    movie_poster_url: str | None = None
+    screening_starts_at: datetime
+    rooftop_name: str
+    city_name: str
+    rooftop_address: str | None = None  # только если paid
+    claimed_by_user_id: int | None = None
+    claimed_at: datetime | None = None
+
+
 class BookingOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
@@ -396,6 +536,8 @@ class BookingOut(BaseModel):
     items: list[BookingItemOut] = []
     screening_info: BookingScreeningInfo | None = None
     receipts: list[PaymentReceiptOut] = []
+    attendees: list[BookingAttendeeOut] = []
+    total_guests: int = 0  # сумма qty×capacity по items, заполняется в роутере
 
 
 class InviteOut(BaseModel):

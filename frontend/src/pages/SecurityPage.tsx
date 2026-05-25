@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
+import { useUI } from "../ui";
 
 type Session = {
   id: number;
@@ -30,6 +31,7 @@ function uaShort(ua: string | null): string {
 
 export default function SecurityPage() {
   const { logout } = useAuth();
+  const { confirm } = useUI();
   const nav = useNavigate();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [cur, setCur] = useState("");
@@ -59,7 +61,13 @@ export default function SecurityPage() {
   }
 
   async function revoke(s: Session) {
-    if (!window.confirm(`Завершить эту сессию${s.is_current ? " (текущая — вас разлогинит)" : ""}?`)) return;
+    const ok = await confirm({
+      title: "Завершить сессию?",
+      message: s.is_current ? "Текущая сессия — вас разлогинит." : "Это устройство выйдет из аккаунта.",
+      confirmText: "Завершить",
+      danger: true,
+    });
+    if (!ok) return;
     try {
       await api.post(`/api/users/me/sessions/${s.id}/revoke`);
       if (s.is_current) { logout(); nav("/login"); return; }
@@ -67,7 +75,13 @@ export default function SecurityPage() {
     } catch (e: any) { setErr(e.message); }
   }
   async function revokeAllOthers() {
-    if (!window.confirm("Завершить все сессии кроме текущей?")) return;
+    const ok = await confirm({
+      title: "Завершить все другие сессии?",
+      message: "Все устройства кроме текущего выйдут из аккаунта.",
+      confirmText: "Завершить все",
+      danger: true,
+    });
+    if (!ok) return;
     try {
       await api.post("/api/users/me/sessions/revoke-all-except-current");
       await reload();

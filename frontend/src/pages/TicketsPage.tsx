@@ -36,7 +36,7 @@ export default function TicketsPage() {
   return (
     <div className="container" style={{ maxWidth: 560 }}>
       <Link to="/profile" className="ghost btn-as-link" style={{ display: "inline-block" }}>← К профилю</Link>
-      <h1 style={{ marginTop: 16 }}>Мои билеты</h1>
+      <h1 style={{ marginTop: 16 }}>Мои QR-коды</h1>
 
       <div className="seg" style={{ marginTop: 12 }}>
         <button type="button" className={tab === "active" ? "active" : ""} onClick={() => setTab("active")}>
@@ -52,9 +52,9 @@ export default function TicketsPage() {
       ) : list.length === 0 ? (
         <div className="empty" style={{ marginTop: 16 }}>
           {tab === "active" ? (
-            <>Действующих билетов нет. <Link to="/" className="rooftop-link">Перейти к афише</Link></>
+            <>Активных броней с QR ещё нет. <Link to="/" className="rooftop-link">Перейти к афише</Link></>
           ) : (
-            "Прошедших билетов пока нет."
+            "Прошедших броней пока нет."
           )}
         </div>
       ) : (
