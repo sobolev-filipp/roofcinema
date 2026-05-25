@@ -135,6 +135,7 @@ export type SeatType = {
   name: string;
   default_price: number;
   default_count: number;
+  capacity: number;
   is_active: boolean;
 };
 
@@ -144,6 +145,16 @@ export type ScreeningSeatType = {
   name: string;
   price: number;
   count: number;
+  capacity: number;
+  seats_available: number;
+};
+
+export type ScreeningNotifySubscription = {
+  id: number;
+  screening_id: number;
+  email: string;
+  created_at: string;
+  notified_at: string | null;
 };
 
 export type PayoutTemplate = {
@@ -163,6 +174,8 @@ export type Screening = {
   rooftop_id: number;
   starts_at: string;
   booking_window_minutes: number;
+  booking_opens_at: string | null;
+  booking_closes_at: string | null;
   base_price: number;
   is_active: boolean;
   note: string | null;
@@ -197,6 +210,32 @@ export type BookingScreeningInfo = {
   rooftop_address: string | null;
 };
 
+export type PaymentReceiptStatus = "pending" | "approved" | "rejected";
+
+export type PaymentReceipt = {
+  id: number;
+  booking_id: number;
+  image_url: string;
+  status: PaymentReceiptStatus;
+  amount_claimed: number | null;
+  rejection_reason: string | null;
+  uploaded_at: string;
+  reviewed_at: string | null;
+};
+
+export type PaymentReceiptAdmin = PaymentReceipt & {
+  booking_full_name: string;
+  booking_email: string;
+  booking_total_amount: number;
+  booking_balance_used: number;
+  booking_status: BookingStatus;
+  booking_short_code: string;
+  screening_id: number;
+  screening_starts_at: string;
+  movie_title: string;
+  rooftop_name: string;
+};
+
 export type Booking = {
   id: number;
   user_id: number | null;
@@ -219,4 +258,5 @@ export type Booking = {
   cancel_reason: string | null;
   items: BookingItem[];
   screening_info: BookingScreeningInfo | null;
+  receipts: PaymentReceipt[];
 };

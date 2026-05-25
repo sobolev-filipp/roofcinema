@@ -6,6 +6,7 @@ const tabs = [
   { to: "/admin/movies",      label: "Фильмы" },
   { to: "/admin/screenings",  label: "Показы" },
   { to: "/admin/bookings",    label: "Бронирования" },
+  { to: "/admin/receipts",    label: "Чеки" },
   { to: "/admin/payout-templates", label: "Реквизиты" },
 ];
 

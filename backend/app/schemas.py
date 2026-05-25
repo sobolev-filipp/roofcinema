@@ -185,12 +185,14 @@ class SeatTypeIn(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     default_price: float = Field(default=0, ge=0)
     default_count: int = Field(default=0, ge=0)
+    capacity: int = Field(default=1, ge=1, le=20, description="Сколько гостей на одно такое место (скамейка=2 и т.д.)")
 
 
 class SeatTypeUpdateIn(BaseModel):
     name: str | None = Field(default=None, max_length=120)
     default_price: float | None = Field(default=None, ge=0)
     default_count: int | None = Field(default=None, ge=0)
+    capacity: int | None = Field(default=None, ge=1, le=20)
     is_active: bool | None = None
 
 
@@ -201,6 +203,7 @@ class SeatTypeOut(BaseModel):
     name: str
     default_price: float
     default_count: int
+    capacity: int
     is_active: bool
 
 
@@ -209,6 +212,7 @@ class ScreeningSeatTypeIn(BaseModel):
     seat_type_id: int
     price: float = Field(ge=0)
     count: int = Field(ge=0)
+    capacity: int | None = Field(default=None, ge=1, le=20, description="Если не указано — берётся из SeatType")
 
 
 class ScreeningSeatTypeOut(BaseModel):
@@ -218,6 +222,8 @@ class ScreeningSeatTypeOut(BaseModel):
     name: str
     price: float
     count: int
+    capacity: int = 1
+    seats_available: int = 0  # сколько ещё можно забронировать (count - занято активными бронями)
 
 
 class PayoutTemplateIn(BaseModel):
@@ -247,6 +253,8 @@ class ScreeningIn(BaseModel):
     rooftop_id: int
     starts_at: datetime
     booking_window_minutes: int = Field(default=120, ge=10, le=24 * 60)
+    booking_opens_at: datetime | None = None
+    booking_closes_at: datetime | None = None
     base_price: float = Field(default=0, ge=0)
     note: str | None = None
     payout_template_id: int | None = None
@@ -256,6 +264,8 @@ class ScreeningIn(BaseModel):
 class ScreeningUpdateIn(BaseModel):
     starts_at: datetime | None = None
     booking_window_minutes: int | None = Field(default=None, ge=10, le=24 * 60)
+    booking_opens_at: datetime | None = None
+    booking_closes_at: datetime | None = None
     base_price: float | None = Field(default=None, ge=0)
     note: str | None = None
     is_active: bool | None = None
@@ -271,6 +281,8 @@ class ScreeningOut(BaseModel):
     rooftop_id: int
     starts_at: datetime
     booking_window_minutes: int
+    booking_opens_at: datetime | None = None
+    booking_closes_at: datetime | None = None
     base_price: float
     is_active: bool
     note: str | None = None
@@ -279,6 +291,15 @@ class ScreeningOut(BaseModel):
     rooftop: RooftopOut
     seats: list[ScreeningSeatTypeOut] = []
     payout_template: PayoutTemplateOut | None = None
+
+
+class ScreeningNotifyOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    screening_id: int
+    email: str
+    created_at: datetime
+    notified_at: datetime | None = None
 
 
 class BookingItemIn(BaseModel):
@@ -321,6 +342,36 @@ class BookingScreeningInfo(BaseModel):
     rooftop_address: str | None = None
 
 
+class PaymentReceiptOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    booking_id: int
+    image_url: str
+    status: str
+    amount_claimed: float | None = None
+    rejection_reason: str | None = None
+    uploaded_at: datetime
+    reviewed_at: datetime | None = None
+
+
+class PaymentReceiptAdminOut(PaymentReceiptOut):
+    """Расширенный чек для админ-модерации — с инфой о брони/фильме/крыше."""
+    booking_full_name: str
+    booking_email: str
+    booking_total_amount: float
+    booking_balance_used: float
+    booking_status: str
+    booking_short_code: str
+    screening_id: int
+    screening_starts_at: datetime
+    movie_title: str
+    rooftop_name: str
+
+
+class PaymentReceiptRejectIn(BaseModel):
+    reason: str = Field(min_length=1, max_length=500)
+
+
 class BookingOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
@@ -344,6 +395,7 @@ class BookingOut(BaseModel):
     cancel_reason: str | None = None
     items: list[BookingItemOut] = []
     screening_info: BookingScreeningInfo | None = None
+    receipts: list[PaymentReceiptOut] = []
 
 
 class InviteOut(BaseModel):

@@ -116,7 +116,10 @@ class Rooftop(Base):
 
 
 class SeatType(Base):
-    """Тип места на крыше: кресло-мешок, шезлонг и т.п."""
+    """Тип места на крыше: кресло-мешок, шезлонг и т.п.
+
+    capacity — сколько гостей может занимать ОДИН такой объект. Кресло-мешок=1,
+    скамейка на двоих=2. Бронь на 1 скамейку = 2 гостя на сеансе."""
     __tablename__ = "seat_types"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -124,6 +127,7 @@ class SeatType(Base):
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     default_price: Mapped[float] = mapped_column(Numeric(10, 2), default=0, nullable=False)
     default_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    capacity: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 
@@ -202,7 +206,10 @@ class PayoutTemplate(Base):
 
 class Screening(Base):
     """Показ конкретного фильма на конкретной крыше в конкретное время.
-    starts_at хранится как наивное локальное время в часовом поясе крыши."""
+    starts_at хранится как наивное локальное время в часовом поясе крыши.
+
+    booking_opens_at / booking_closes_at — окно бронирования. None у opens_at = всегда открыто,
+    None у closes_at = открыто до начала показа."""
     __tablename__ = "screenings"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -210,6 +217,8 @@ class Screening(Base):
     rooftop_id: Mapped[int] = mapped_column(ForeignKey("rooftops.id", ondelete="CASCADE"), nullable=False, index=True)
     starts_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
     booking_window_minutes: Mapped[int] = mapped_column(Integer, default=120, nullable=False)
+    booking_opens_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    booking_closes_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     base_price: Mapped[float] = mapped_column(Numeric(10, 2), default=0, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -226,7 +235,7 @@ class Screening(Base):
 
 class ScreeningSeatType(Base):
     """Снапшот доступного типа мест для конкретного показа.
-    Хранит name, чтобы пережить удаление SeatType (мягкое или жёсткое)."""
+    Хранит name + capacity, чтобы пережить удаление/изменение SeatType."""
     __tablename__ = "screening_seat_types"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -235,6 +244,7 @@ class ScreeningSeatType(Base):
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     price: Mapped[float] = mapped_column(Numeric(10, 2), default=0, nullable=False)
     count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    capacity: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
 
     screening = relationship("Screening", back_populates="seats")
     booking_items = relationship("BookingItem", back_populates="screening_seat_type")
@@ -292,6 +302,12 @@ class Booking(Base):
     user = relationship("User", foreign_keys=[user_id])
     screening = relationship("Screening")
     items = relationship("BookingItem", back_populates="booking", cascade="all, delete-orphan")
+    receipts = relationship(
+        "PaymentReceipt",
+        back_populates="booking",
+        cascade="all, delete-orphan",
+        order_by="PaymentReceipt.uploaded_at.desc()",
+    )
 
 
 class BookingItem(Base):
@@ -310,6 +326,47 @@ class BookingItem(Base):
 
     booking = relationship("Booking", back_populates="items")
     screening_seat_type = relationship("ScreeningSeatType", back_populates="booking_items")
+
+
+class ScreeningBookingNotify(Base):
+    """Подписка пользователя на уведомление о старте бронирования показа.
+    Когда наступит screening.booking_opens_at — фоновая задача шлёт письмо
+    и проставляет notified_at."""
+    __tablename__ = "screening_booking_notifies"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    screening_id: Mapped[int] = mapped_column(ForeignKey("screenings.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    email: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+    notified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    screening = relationship("Screening")
+
+
+class PaymentReceiptStatus(str, Enum):
+    pending = "pending"
+    approved = "approved"
+    rejected = "rejected"
+
+
+class PaymentReceipt(Base):
+    """Чек об оплате, загруженный пользователем для брони (оплата переводом).
+    Админ подтверждает или отклоняет — при подтверждении бронь становится paid."""
+    __tablename__ = "payment_receipts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    booking_id: Mapped[int] = mapped_column(ForeignKey("bookings.id", ondelete="CASCADE"), nullable=False, index=True)
+    image_url: Mapped[str] = mapped_column(String(512), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default=PaymentReceiptStatus.pending.value, nullable=False, index=True)
+    amount_claimed: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
+    rejection_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    reviewed_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    booking = relationship("Booking", back_populates="receipts")
+    reviewed_by = relationship("User", foreign_keys=[reviewed_by_id])
 
 
 class RooftopAdminInvite(Base):

@@ -9,8 +9,6 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session, joinedload, selectinload
 
-import asyncio
-
 from ..db import get_db
 from ..deps import get_current_user, require_admin_or_super
 from ..models import (
@@ -25,18 +23,15 @@ from ..models import (
     UserRole,
 )
 from ..schemas import BookingCreateIn, BookingOut, BookingScreeningInfo
+from ..utils import now_in_tz
 from ..ws_manager import manager
 
 
 def _broadcast(screening_id: int, event: str, booking_id: int) -> None:
-    """Без блокировки бросает событие в WS-комнату показа. Если нет loop — просто игнорим."""
+    """Бросает событие в WS-комнату показа. Работает и из sync-эндпоинтов FastAPI
+    (которые выполняются в threadpool и не имеют running loop)."""
     payload = {"event": event, "booking_id": booking_id, "screening_id": screening_id}
-    try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            asyncio.ensure_future(manager.broadcast(f"screening:{screening_id}", payload))
-    except RuntimeError:
-        pass
+    manager.broadcast_threadsafe(f"screening:{screening_id}", payload)
 
 router = APIRouter(prefix="/api/bookings", tags=["bookings"])
 
@@ -96,6 +91,7 @@ def _eager() -> list:
         joinedload(Booking.screening).joinedload(Screening.movie),
         joinedload(Booking.screening).joinedload(Screening.rooftop).joinedload(Rooftop.city),
         selectinload(Booking.items),
+        selectinload(Booking.receipts),
     ]
 
 
@@ -227,14 +223,29 @@ def create_booking(
 
     screening = (
         db.query(Screening)
-        .options(joinedload(Screening.rooftop))
+        .options(joinedload(Screening.rooftop).joinedload(Rooftop.city))
         .filter(Screening.id == payload.screening_id)
         .first()
     )
     if not screening or not screening.is_active:
         raise HTTPException(status_code=404, detail="Показ не найден или недоступен")
-    if screening.starts_at < datetime.utcnow():
+    # screening.starts_at/booking_opens_at/booking_closes_at — это локальное
+    # наивное время в часовом поясе крыши, сравниваем с «локальным сейчас», а не utcnow.
+    tz_name = (
+        screening.rooftop.city.timezone
+        if screening.rooftop and screening.rooftop.city else None
+    )
+    local_now = now_in_tz(tz_name)
+    if screening.starts_at < local_now:
         raise HTTPException(status_code=400, detail="Этот показ уже состоялся")
+    if screening.booking_opens_at and local_now < screening.booking_opens_at:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Бронирование откроется {screening.booking_opens_at.strftime('%d.%m.%Y в %H:%M')}",
+        )
+    close_at = screening.booking_closes_at or screening.starts_at
+    if local_now >= close_at:
+        raise HTTPException(status_code=400, detail="Бронирование на этот показ закрыто")
 
     _expire_overdue(db)
 

@@ -17,7 +17,7 @@ export default function RooftopAdmin() {
   const [rooftop, setRooftop] = useState<Rooftop | null>(null);
   const [form, setForm] = useState({ name: "", address: "", description: "", lat: null as number | null, lng: null as number | null });
   const [seatTypes, setSeatTypes] = useState<SeatType[]>([]);
-  const [newSt, setNewSt] = useState({ name: "", default_price: 0, default_count: 0 });
+  const [newSt, setNewSt] = useState({ name: "", default_price: 0, default_count: 0, capacity: 1 });
   const [invites, setInvites] = useState<InviteOut[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
@@ -53,7 +53,7 @@ export default function RooftopAdmin() {
     setErr(null);
     try {
       await api.post(`/api/rooftops/${rooftopId}/seat-types`, newSt);
-      setNewSt({ name: "", default_price: 0, default_count: 0 });
+      setNewSt({ name: "", default_price: 0, default_count: 0, capacity: 1 });
       await reload();
     } catch (e: any) { setErr(e.message); }
   }
@@ -150,6 +150,16 @@ export default function RooftopAdmin() {
             <label>Количество</label>
             <input type="number" min={0} value={newSt.default_count} onChange={(e) => setNewSt({ ...newSt, default_count: Number(e.target.value) })} />
           </div>
+          <div className="field" style={{ width: 130, marginBottom: 0 }}>
+            <label title="Сколько гостей помещается на одно такое место (скамейка=2)">Гостей/место</label>
+            <input
+              type="number"
+              min={1}
+              max={20}
+              value={newSt.capacity}
+              onChange={(e) => setNewSt({ ...newSt, capacity: Math.max(1, Number(e.target.value)) })}
+            />
+          </div>
           <button className="primary" type="submit">Добавить</button>
         </div>
       </form>
@@ -161,7 +171,7 @@ export default function RooftopAdmin() {
               <input style={{ flex: 1, marginRight: 8 }} value={st.name} onChange={(e) => updateSt(st, { name: e.target.value })} />
               <button className="ghost danger-on-hover" onClick={() => deleteSt(st)} title="Удалить">✕</button>
             </div>
-            <div className="row gap" style={{ marginTop: 10 }}>
+            <div className="row gap" style={{ marginTop: 10, flexWrap: "wrap" }}>
               <div className="field" style={{ width: 110, marginBottom: 0 }}>
                 <label>Цена ₽</label>
                 <input type="number" min={0} value={st.default_price}
@@ -171,6 +181,11 @@ export default function RooftopAdmin() {
                 <label>Количество</label>
                 <input type="number" min={0} value={st.default_count}
                        onChange={(e) => updateSt(st, { default_count: Number(e.target.value) })} />
+              </div>
+              <div className="field" style={{ width: 130, marginBottom: 0 }}>
+                <label title="Сколько гостей помещается на одно такое место">Гостей/место</label>
+                <input type="number" min={1} max={20} value={st.capacity ?? 1}
+                       onChange={(e) => updateSt(st, { capacity: Math.max(1, Number(e.target.value)) })} />
               </div>
             </div>
             {!st.is_active && <span className="badge" style={{ marginTop: 8 }}>скрыт (есть в прошлых показах)</span>}

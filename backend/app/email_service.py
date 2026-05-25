@@ -61,3 +61,38 @@ def send_password_reset(email: str, link: str) -> None:
         f"Если вы не запрашивали сброс — просто проигнорируйте письмо."
     )
     send_email(email, "Сброс пароля — Кино на крыше", body)
+
+
+def send_payment_approved(email: str, movie_title: str, starts_at_text: str, booking_id: int, short_code: str) -> None:
+    body = (
+        f"Здравствуйте!\n\n"
+        f"Оплата по брони #{booking_id} подтверждена.\n"
+        f"Фильм: {movie_title}\n"
+        f"Начало: {starts_at_text}\n"
+        f"Код брони: {short_code}\n\n"
+        f"Билет доступен в разделе «Мои билеты». До встречи на крыше!"
+    )
+    send_email(email, "Оплата подтверждена — Кино на крыше", body)
+
+
+def send_booking_window_opened(email: str, movie_title: str, starts_at_text: str, link: str) -> None:
+    body = (
+        f"Здравствуйте!\n\n"
+        f"Открылось бронирование на показ:\n"
+        f"  {movie_title}\n"
+        f"  Начало: {starts_at_text}\n\n"
+        f"Забронировать место можно по ссылке:\n{link}\n\n"
+        f"Места уходят быстро — не откладывайте."
+    )
+    send_email(email, "Открылось бронирование — Кино на крыше", body)
+
+
+def send_payment_rejected(email: str, movie_title: str, booking_id: int, reason: str) -> None:
+    body = (
+        f"Здравствуйте!\n\n"
+        f"К сожалению, по брони #{booking_id} ({movie_title}) оплата не подтверждена.\n\n"
+        f"Причина: {reason}\n\n"
+        f"Вы можете загрузить новый чек в разделе брони — таймер ещё идёт. "
+        f"Если возникли вопросы — свяжитесь с организатором."
+    )
+    send_email(email, "Чек не подтверждён — Кино на крыше", body)

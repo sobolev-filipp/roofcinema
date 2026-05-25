@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, type Movie, type PayoutTemplate, type Rooftop, type Screening, type SeatType } from "../../api";
 
-type Alloc = { seat_type_id: number; price: number; count: number };
+type Alloc = { seat_type_id: number; price: number; count: number; capacity: number };
 
 export default function ScreeningsAdmin() {
   const [movies, setMovies] = useState<Movie[]>([]);
@@ -13,6 +13,8 @@ export default function ScreeningsAdmin() {
   const [form, setForm] = useState({
     movie_id: 0, rooftop_id: 0, starts_at: "",
     booking_window_minutes: 120, base_price: 0,
+    booking_opens_at: "",
+    booking_closes_at: "",
     payout_template_id: null as number | null,
   });
   const [seatTypes, setSeatTypes] = useState<SeatType[]>([]);
@@ -38,7 +40,12 @@ export default function ScreeningsAdmin() {
     api.get<SeatType[]>(`/api/rooftops/${form.rooftop_id}/seat-types`)
       .then((sts) => {
         setSeatTypes(sts);
-        setAllocs(sts.map((st) => ({ seat_type_id: st.id, price: st.default_price, count: st.default_count })));
+        setAllocs(sts.map((st) => ({
+          seat_type_id: st.id,
+          price: st.default_price,
+          count: st.default_count,
+          capacity: st.capacity ?? 1,
+        })));
       })
       .catch(() => { setSeatTypes([]); setAllocs([]); });
   }, [form.rooftop_id]);
@@ -51,6 +58,8 @@ export default function ScreeningsAdmin() {
         ...form,
         movie_id: Number(form.movie_id),
         rooftop_id: Number(form.rooftop_id),
+        booking_opens_at: form.booking_opens_at || null,
+        booking_closes_at: form.booking_closes_at || null,
         payout_template_id: form.payout_template_id || null,
         seat_allocations: allocs.filter((a) => a.count > 0),
       });
@@ -58,6 +67,7 @@ export default function ScreeningsAdmin() {
       setForm({
         movie_id: 0, rooftop_id: 0, starts_at: "",
         booking_window_minutes: 120, base_price: 0,
+        booking_opens_at: "", booking_closes_at: "",
         payout_template_id: def?.id ?? null,
       });
       setSeatTypes([]); setAllocs([]);
@@ -102,9 +112,28 @@ export default function ScreeningsAdmin() {
             <input type="datetime-local" required value={form.starts_at} onChange={(e) => setForm({ ...form, starts_at: e.target.value })} />
           </div>
           <div className="field" style={{ width: 140, marginBottom: 0 }}>
-            <label>Окно брони, мин</label>
+            <label title="Сколько минут даётся на оплату одной брони">Таймер брони, мин</label>
             <input type="number" min={10} max={1440} value={form.booking_window_minutes}
                    onChange={(e) => setForm({ ...form, booking_window_minutes: Number(e.target.value) })} />
+          </div>
+        </div>
+
+        <div className="row gap" style={{ flexWrap: "wrap", marginTop: 10 }}>
+          <div className="field" style={{ width: 240, marginBottom: 0 }}>
+            <label title="С какого момента можно бронировать. Пусто — сразу открыто.">Открыть бронирование</label>
+            <input
+              type="datetime-local"
+              value={form.booking_opens_at}
+              onChange={(e) => setForm({ ...form, booking_opens_at: e.target.value })}
+            />
+          </div>
+          <div className="field" style={{ width: 240, marginBottom: 0 }}>
+            <label title="После этого момента нельзя забронировать. Пусто — до начала показа.">Закрыть бронирование</label>
+            <input
+              type="datetime-local"
+              value={form.booking_closes_at}
+              onChange={(e) => setForm({ ...form, booking_closes_at: e.target.value })}
+            />
           </div>
         </div>
 
@@ -148,7 +177,7 @@ export default function ScreeningsAdmin() {
                   return (
                     <div key={st.id} className="alloc-row">
                       <div className="alloc-name">{st.name}</div>
-                      <div className="row gap">
+                      <div className="row gap" style={{ flexWrap: "wrap" }}>
                         <div className="field" style={{ width: 110, marginBottom: 0 }}>
                           <label>Цена ₽</label>
                           <input type="number" min={0} value={a.price}
@@ -158,6 +187,11 @@ export default function ScreeningsAdmin() {
                           <label>Количество</label>
                           <input type="number" min={0} value={a.count}
                                  onChange={(e) => updateAlloc(st.id, { count: Number(e.target.value) })} />
+                        </div>
+                        <div className="field" style={{ width: 120, marginBottom: 0 }}>
+                          <label title="Сколько гостей на одно место">Гостей/место</label>
+                          <input type="number" min={1} max={20} value={a.capacity}
+                                 onChange={(e) => updateAlloc(st.id, { capacity: Math.max(1, Number(e.target.value)) })} />
                         </div>
                       </div>
                     </div>
@@ -189,8 +223,10 @@ export default function ScreeningsAdmin() {
               <div style={{ marginTop: 10, fontSize: 12 }}>
                 {s.seats.map((sa) => (
                   <div key={sa.id} className="row between" style={{ borderTop: "1px solid var(--border)", padding: "4px 0" }}>
-                    <span>{sa.name}</span>
-                    <span className="muted">{Number(sa.price).toFixed(0)} ₽ × {sa.count}</span>
+                    <span>{sa.name}{sa.capacity > 1 ? ` (×${sa.capacity} гостя)` : ""}</span>
+                    <span className="muted">
+                      {Number(sa.price).toFixed(0)} ₽ · осталось {sa.seats_available}/{sa.count}
+                    </span>
                   </div>
                 ))}
               </div>

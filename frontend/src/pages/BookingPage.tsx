@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, type Booking, type Screening } from "../api";
 import { useAuth } from "../auth";
 import BalancePaymentBox from "../components/BalancePaymentBox";
+import ReceiptUploadBox from "../components/ReceiptUploadBox";
 import { STATUS_COLOR, STATUS_LABELS, formatCountdown, msUntil, parseUtc } from "../lib/bookingStatus";
 
 const fmt = (iso: string) =>
@@ -171,8 +172,10 @@ export default function BookingPage() {
                 <p className="muted" style={{ marginTop: 10, fontSize: 13 }}>{screening.payout_template.note}</p>
               )}
               <p className="muted" style={{ marginTop: 10, fontSize: 12 }}>
-                После перевода в Фазе 5 здесь появится загрузка чека. Пока подтверждение производит администратор вручную.
+                Сделайте перевод, затем загрузите скриншот чека ниже — администратор подтвердит оплату.
               </p>
+
+              <ReceiptUploadBox booking={booking} onUploaded={setBooking} />
             </div>
           ) : (
             <div className="hint-box">Реквизиты для перевода не настроены организатором показа.</div>

@@ -1,11 +1,21 @@
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from ..db import get_db
 from ..deps import require_admin_or_super
-from ..models import Movie, Rooftop, Screening, ScreeningSeatType, SeatType
+from ..models import (
+    Booking,
+    BookingItem,
+    BookingStatus,
+    Movie,
+    Rooftop,
+    Screening,
+    ScreeningSeatType,
+    SeatType,
+)
 from ..schemas import ScreeningIn, ScreeningOut, ScreeningSeatTypeIn, ScreeningUpdateIn
 
 router = APIRouter(prefix="/api/screenings", tags=["screenings"])
@@ -20,11 +30,43 @@ def _eager() -> list:
     ]
 
 
+def _fill_seats_available(db: Session, screening: Screening) -> None:
+    """Считает свободные места для каждой аллокации и кладёт в transient-атрибут
+    seats_available — Pydantic from_attributes подхватит."""
+    if not screening.seats:
+        return
+    sst_ids = [s.id for s in screening.seats]
+    now = datetime.utcnow()
+    rows = (
+        db.query(BookingItem.screening_seat_type_id, func.coalesce(func.sum(BookingItem.qty), 0))
+        .join(Booking, BookingItem.booking_id == Booking.id)
+        .filter(BookingItem.screening_seat_type_id.in_(sst_ids))
+        .filter(
+            or_(
+                Booking.status.in_([
+                    BookingStatus.paid.value,
+                    BookingStatus.attended.value,
+                    BookingStatus.paid_by_balance.value,
+                ]),
+                and_(
+                    Booking.status == BookingStatus.waiting_payment.value,
+                    Booking.expires_at > now,
+                ),
+            )
+        )
+        .group_by(BookingItem.screening_seat_type_id)
+        .all()
+    )
+    used = {sid: int(qty) for sid, qty in rows}
+    for s in screening.seats:
+        s.seats_available = max(0, int(s.count) - used.get(s.id, 0))
+
+
 def _apply_seat_allocations(
     db: Session, screening: Screening, allocations: list[ScreeningSeatTypeIn]
 ) -> None:
-    """Заменяет аллокации мест для показа. Делает снапшот name из SeatType."""
-    # очищаем существующие
+    """Заменяет аллокации мест для показа. Снапшотим name и capacity из SeatType,
+    capacity можно переопределить на конкретный показ."""
     db.query(ScreeningSeatType).filter(ScreeningSeatType.screening_id == screening.id).delete()
     for alloc in allocations:
         st = db.get(SeatType, alloc.seat_type_id)
@@ -36,6 +78,7 @@ def _apply_seat_allocations(
             name=st.name,
             price=alloc.price,
             count=alloc.count,
+            capacity=alloc.capacity if alloc.capacity is not None else st.capacity,
         ))
 
 
@@ -64,7 +107,10 @@ def list_screenings(
         query = query.filter(Screening.starts_at >= date_from)
     if date_to is not None:
         query = query.filter(Screening.starts_at < date_to)
-    return query.order_by(Screening.starts_at).all()
+    result = query.order_by(Screening.starts_at).all()
+    for s in result:
+        _fill_seats_available(db, s)
+    return result
 
 
 @router.get("/{screening_id}", response_model=ScreeningOut)
@@ -74,7 +120,12 @@ def get_screening(screening_id: int, db: Session = Depends(get_db)):
     )
     if not screening:
         raise HTTPException(status_code=404, detail="Показ не найден")
+    _fill_seats_available(db, screening)
     return screening
+
+
+def _normalize_naive(dt: datetime | None) -> datetime | None:
+    return dt.replace(tzinfo=None) if dt is not None else None
 
 
 @router.post("", response_model=ScreeningOut, status_code=201, dependencies=[Depends(require_admin_or_super)])
@@ -83,15 +134,18 @@ def create_screening(payload: ScreeningIn, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Фильм не найден")
     if not db.get(Rooftop, payload.rooftop_id):
         raise HTTPException(status_code=400, detail="Крыша не найдена")
-    starts_at = payload.starts_at.replace(tzinfo=None)
     data = payload.model_dump(exclude={"seat_allocations"})
-    data["starts_at"] = starts_at
+    data["starts_at"] = _normalize_naive(payload.starts_at)
+    data["booking_opens_at"] = _normalize_naive(payload.booking_opens_at)
+    data["booking_closes_at"] = _normalize_naive(payload.booking_closes_at)
     screening = Screening(**data)
     db.add(screening)
     db.flush()
     _apply_seat_allocations(db, screening, payload.seat_allocations)
     db.commit()
-    return db.query(Screening).options(*_eager()).filter(Screening.id == screening.id).first()
+    fresh = db.query(Screening).options(*_eager()).filter(Screening.id == screening.id).first()
+    _fill_seats_available(db, fresh)
+    return fresh
 
 
 @router.patch("/{screening_id}", response_model=ScreeningOut, dependencies=[Depends(require_admin_or_super)])
@@ -100,14 +154,17 @@ def update_screening(screening_id: int, payload: ScreeningUpdateIn, db: Session 
     if not screening:
         raise HTTPException(status_code=404, detail="Показ не найден")
     data = payload.model_dump(exclude_unset=True, exclude={"seat_allocations"})
-    if "starts_at" in data and data["starts_at"] is not None:
-        data["starts_at"] = data["starts_at"].replace(tzinfo=None)
+    for key in ("starts_at", "booking_opens_at", "booking_closes_at"):
+        if key in data and data[key] is not None:
+            data[key] = data[key].replace(tzinfo=None)
     for k, v in data.items():
         setattr(screening, k, v)
     if payload.seat_allocations is not None:
         _apply_seat_allocations(db, screening, payload.seat_allocations)
     db.commit()
-    return db.query(Screening).options(*_eager()).filter(Screening.id == screening.id).first()
+    fresh = db.query(Screening).options(*_eager()).filter(Screening.id == screening.id).first()
+    _fill_seats_available(db, fresh)
+    return fresh
 
 
 @router.delete("/{screening_id}", status_code=204, dependencies=[Depends(require_admin_or_super)])

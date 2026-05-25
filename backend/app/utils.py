@@ -2,6 +2,29 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime
+
+try:
+    from zoneinfo import ZoneInfo  # Python 3.9+
+except ImportError:  # pragma: no cover
+    ZoneInfo = None  # type: ignore
+
+
+def now_in_tz(tz_name: str | None) -> datetime:
+    """Текущее «локальное наивное» время в указанном IANA-часовом поясе.
+
+    Используется для сравнения со «screening.starts_at» / «booking_opens_at» /
+    «booking_closes_at», которые по конвенции хранятся как наивное локальное
+    время в часовом поясе крыши (см. docstring Screening). НЕ для сравнения с
+    UTC-полями типа Booking.expires_at — те остаются как datetime.utcnow().
+    """
+    if not tz_name or ZoneInfo is None:
+        return datetime.utcnow()
+    try:
+        tz = ZoneInfo(tz_name)
+    except Exception:
+        return datetime.utcnow()
+    return datetime.now(tz).replace(tzinfo=None)
 
 # Базовая транслитерация ГОСТ-ish для slug. Без зависимостей.
 _CYR_MAP = {

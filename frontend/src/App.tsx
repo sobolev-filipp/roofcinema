@@ -14,6 +14,7 @@ import MoviesAdmin from "./pages/admin/MoviesAdmin";
 import MovieAdminPage from "./pages/admin/MovieAdmin";
 import ScreeningsAdmin from "./pages/admin/ScreeningsAdmin";
 import BookingsAdmin from "./pages/admin/BookingsAdmin";
+import ReceiptsAdmin from "./pages/admin/ReceiptsAdmin";
 import PayoutTemplatesAdmin from "./pages/admin/PayoutTemplatesAdmin";
 import ProfilePage from "./pages/ProfilePage";
 import EditProfilePage from "./pages/EditProfilePage";
@@ -84,6 +85,7 @@ export default function App() {
                 <Route path="movies/:id" element={<MovieAdminPage />} />
                 <Route path="screenings" element={<ScreeningsAdmin />} />
                 <Route path="bookings" element={<BookingsAdmin />} />
+                <Route path="receipts" element={<ReceiptsAdmin />} />
                 <Route path="payout-templates" element={<PayoutTemplatesAdmin />} />
               </Route>
               <Route path="/invite/:token" element={<Protected><AcceptInvitePage /></Protected>} />

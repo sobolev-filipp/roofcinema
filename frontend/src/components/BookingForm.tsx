@@ -26,6 +26,10 @@ export default function BookingForm({ screening, onCancel }: Props) {
     return screening.seats.reduce((sum, sst) => sum + (qty[sst.id] ?? 0) * Number(sst.price), 0);
   }, [qty, screening]);
   const totalSeats = useMemo(() => Object.values(qty).reduce((a, b) => a + b, 0), [qty]);
+  const totalGuests = useMemo(
+    () => screening.seats.reduce((sum, sst) => sum + (qty[sst.id] ?? 0) * (sst.capacity ?? 1), 0),
+    [qty, screening],
+  );
 
   function setSeat(sstId: number, value: number) {
     setQty((q) => ({ ...q, [sstId]: Math.max(0, value) }));
@@ -74,16 +78,36 @@ export default function BookingForm({ screening, onCancel }: Props) {
         )}
         {screening.seats.map((sst) => {
           const q = qty[sst.id] ?? 0;
+          const available = sst.seats_available ?? sst.count;
+          const capacity = sst.capacity ?? 1;
+          const soldOut = available <= 0;
           return (
-            <div key={sst.id} className="seat-row">
+            <div key={sst.id} className={"seat-row" + (soldOut ? " sold-out" : "")}>
               <div className="seat-info">
-                <div className="seat-name">{sst.name}</div>
-                <div className="muted" style={{ fontSize: 12 }}>{Number(sst.price).toFixed(0)} ₽ × до {sst.count}</div>
+                <div className="seat-name">
+                  {sst.name}
+                  {capacity > 1 && (
+                    <span className="badge accent" style={{ marginLeft: 8, fontSize: 11 }}>
+                      {capacity} гостя/место
+                    </span>
+                  )}
+                </div>
+                <div className="muted" style={{ fontSize: 12 }}>
+                  {Number(sst.price).toFixed(0)} ₽ ·{" "}
+                  {soldOut
+                    ? "мест нет"
+                    : `осталось ${available} из ${sst.count}`}
+                </div>
               </div>
               <div className="qty-controls">
                 <button type="button" onClick={() => setSeat(sst.id, q - 1)} disabled={q <= 0}>−</button>
                 <span className="qty-value">{q}</span>
-                <button type="button" onClick={() => setSeat(sst.id, q + 1)} disabled={q >= sst.count}>+</button>
+                <button
+                  type="button"
+                  onClick={() => setSeat(sst.id, q + 1)}
+                  disabled={q >= available}
+                  title={q >= available ? "Достигнут лимит свободных мест" : undefined}
+                >+</button>
               </div>
             </div>
           );
@@ -92,7 +116,14 @@ export default function BookingForm({ screening, onCancel }: Props) {
 
       {totalSeats > 0 && (
         <div className="booking-total">
-          <span>{totalSeats} {totalSeats === 1 ? "место" : totalSeats < 5 ? "места" : "мест"}</span>
+          <span>
+            {totalSeats} {totalSeats === 1 ? "место" : totalSeats < 5 ? "места" : "мест"}
+            {totalGuests !== totalSeats && (
+              <span className="muted" style={{ marginLeft: 6, fontSize: 13 }}>
+                · {totalGuests} {totalGuests === 1 ? "гость" : totalGuests < 5 ? "гостя" : "гостей"}
+              </span>
+            )}
+          </span>
           <span className="total-amount">{total.toFixed(0)} ₽</span>
         </div>
       )}

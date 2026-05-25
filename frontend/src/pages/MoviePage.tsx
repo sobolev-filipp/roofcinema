@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { api, type City, type Movie, type Screening } from "../api";
 import BookingForm from "../components/BookingForm";
 import Rating from "../components/Rating";
+import ScreeningBookingStatus, { getBookingStatus } from "../components/ScreeningBookingStatus";
 import { toEmbedUrl } from "../lib/embed";
 
 let _citiesCache: Promise<City[]> | null = null;
@@ -74,7 +75,7 @@ export default function MoviePage() {
                 const active = s.seats.filter((sst) => sst.count > 0);
                 const minPrice = active.length > 0 ? Math.min(...active.map((sst) => Number(sst.price))) : Number(s.base_price);
                 const isExpanded = bookingForScreening === s.id;
-                const future = new Date(s.starts_at) > new Date();
+                const bStatus = getBookingStatus(s);
                 return (
                   <div key={s.id} className={"card screening-block" + (isExpanded ? " expanded" : "")}>
                     <div className="row between" style={{ flexWrap: "wrap", gap: 10 }}>
@@ -90,7 +91,7 @@ export default function MoviePage() {
                       </div>
                       <div style={{ textAlign: "right" }}>
                         <div style={{ fontSize: 16, fontWeight: 700 }}>от {minPrice.toFixed(0)} ₽</div>
-                        {future ? (
+                        {bStatus === "open" ? (
                           <button
                             className={isExpanded ? "ghost" : "primary"}
                             style={{ marginTop: 8 }}
@@ -98,12 +99,21 @@ export default function MoviePage() {
                           >
                             {isExpanded ? "Скрыть" : "Забронировать"}
                           </button>
-                        ) : (
+                        ) : bStatus === "past" ? (
                           <button className="ghost" style={{ marginTop: 8 }} disabled>Показ прошёл</button>
+                        ) : bStatus === "closed" ? (
+                          <button className="ghost" style={{ marginTop: 8 }} disabled>Бронирование закрыто</button>
+                        ) : (
+                          <button className="ghost" style={{ marginTop: 8 }} disabled>Скоро откроется</button>
                         )}
                       </div>
                     </div>
-                    {isExpanded && (
+
+                    {bStatus !== "open" && (
+                      <ScreeningBookingStatus screening={s} status={bStatus} />
+                    )}
+
+                    {isExpanded && bStatus === "open" && (
                       <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--border)" }}>
                         <BookingForm screening={s} onCancel={() => setBookingForScreening(null)} />
                       </div>
