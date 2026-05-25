@@ -1,0 +1,216 @@
+import { useEffect, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { api, type Booking, type Screening } from "../api";
+import { useAuth } from "../auth";
+import BalancePaymentBox from "../components/BalancePaymentBox";
+import { STATUS_COLOR, STATUS_LABELS, formatCountdown, msUntil, parseUtc } from "../lib/bookingStatus";
+
+const fmt = (iso: string) =>
+  new Date(iso).toLocaleString("ru-RU", { dateStyle: "long", timeStyle: "short" });
+const fmtUtc = (iso: string) =>
+  parseUtc(iso).toLocaleString("ru-RU", { dateStyle: "long", timeStyle: "short" });
+
+export default function BookingPage() {
+  const { id } = useParams();
+  const nav = useNavigate();
+  const { user, refresh } = useAuth();
+  const [booking, setBooking] = useState<Booking | null>(null);
+  const [screening, setScreening] = useState<Screening | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [, force] = useState(0);
+
+  async function load() {
+    if (!id) return;
+    try {
+      const b = await api.get<Booking>(`/api/bookings/${id}`);
+      setBooking(b);
+      // подтянем показ для реквизитов оплаты (только публичная инфа)
+      try {
+        const s = await api.get<Screening>(`/api/screenings/${b.screening_id}`);
+        setScreening(s);
+      } catch {}
+    } catch (e: any) { setErr(e.message); }
+  }
+  useEffect(() => { load(); }, [id]);
+
+  useEffect(() => {
+    const t = setInterval(() => force((x) => x + 1), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  if (err) return <div className="container"><div className="error">{err}</div></div>;
+  if (!booking) return <div className="container"><div className="empty">Загрузка...</div></div>;
+
+  const info = booking.screening_info!;
+  const remainingMs = msUntil(booking.expires_at);
+  const isWaiting = booking.status === "waiting_payment";
+  const isPaid = booking.status === "paid" || booking.status === "paid_by_balance" || booking.status === "attended";
+  const isAdmin = user?.role === "super_admin" || user?.role === "admin";
+
+  async function cancel() {
+    if (!window.confirm("Отменить бронь?")) return;
+    setBusy(true);
+    try {
+      const b = await api.post<Booking>(`/api/bookings/${id}/cancel`);
+      setBooking(b);
+    } catch (e: any) { setErr(e.message); }
+    finally { setBusy(false); }
+  }
+
+  async function markPaid() {
+    // временно: админ помечает оплаченным. В Фазе 5 — нормальная загрузка чека.
+    setBusy(true);
+    try {
+      const b = await api.post<Booking>(`/api/bookings/${id}/mark-paid`);
+      setBooking(b);
+    } catch (e: any) { setErr(e.message); }
+    finally { setBusy(false); }
+  }
+
+  async function applyBalance(amount: number) {
+    setBusy(true);
+    try {
+      const b = await api.post<Booking>(`/api/bookings/${id}/apply-balance?amount=${amount}`);
+      setBooking(b);
+      await refresh();
+    } catch (e: any) { setErr(e.message); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div className="container" style={{ maxWidth: 720 }}>
+      <button className="ghost" onClick={() => nav("/bookings")}>← К моим броням</button>
+
+      <div className="card" style={{ marginTop: 16 }}>
+        <div className="row between" style={{ flexWrap: "wrap", gap: 12 }}>
+          <div style={{ display: "flex", gap: 14, alignItems: "flex-start", minWidth: 0, flex: 1 }}>
+            {info.movie_poster_url && (
+              <img src={info.movie_poster_url} alt="" style={{ width: 80, height: 120, objectFit: "cover", borderRadius: 6 }} />
+            )}
+            <div style={{ minWidth: 0 }}>
+              <h1 style={{ margin: 0, fontSize: 22 }}>{info.movie_title}</h1>
+              <div className="muted" style={{ marginTop: 6 }}>{fmt(info.starts_at)}</div>
+              <div className="muted" style={{ fontSize: 14, marginTop: 4 }}>
+                {info.city_name} · <Link to={`/rooftops/${info.rooftop_id}`} className="rooftop-link">{info.rooftop_name}</Link>
+              </div>
+              <div className="status-pill" style={{ marginTop: 10, borderColor: STATUS_COLOR[booking.status], color: STATUS_COLOR[booking.status] }}>
+                {STATUS_LABELS[booking.status]}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {isWaiting && (
+        <div className="card timer-card">
+          <div className="muted" style={{ fontSize: 13 }}>До истечения брони</div>
+          <div className="timer-value">{formatCountdown(remainingMs)}</div>
+          <div className="muted" style={{ fontSize: 12 }}>
+            После {fmtUtc(booking.expires_at)} места освободятся, и бронь нужно будет создать заново.
+          </div>
+        </div>
+      )}
+
+      <div className="card" style={{ marginTop: 12 }}>
+        <h3 style={{ marginTop: 0 }}>Состав брони</h3>
+        {booking.items.map((it) => (
+          <div key={it.id} className="row between" style={{ borderTop: "1px solid var(--border)", padding: "8px 0" }}>
+            <span>{it.name} × {it.qty}</span>
+            <span className="muted">{(it.price_each * it.qty).toFixed(0)} ₽</span>
+          </div>
+        ))}
+        <div className="row between" style={{ borderTop: "1px solid var(--border)", padding: "10px 0 0", fontWeight: 700, fontSize: 18 }}>
+          <span>Итого</span>
+          <span>{Number(booking.total_amount).toFixed(0)} ₽</span>
+        </div>
+      </div>
+
+      {isWaiting && (
+        <div className="card" style={{ marginTop: 12 }}>
+          <h3 style={{ marginTop: 0 }}>Способ оплаты</h3>
+
+          {user && Number(user.balance) > 0 && (
+            <BalancePaymentBox
+              balance={Number(user.balance)}
+              total={Number(booking.total_amount)}
+              alreadyUsed={Number(booking.balance_used || 0)}
+              busy={busy}
+              onApply={applyBalance}
+            />
+          )}
+
+          {screening?.payout_template ? (
+            <div className="payout-details">
+              <div className="payment-name" style={{ marginBottom: 8 }}>Перевод по реквизитам</div>
+              <div className="payout-grid">
+                <span>Получатель:</span>
+                <b>{screening.payout_template.recipient_name}</b>
+                {screening.payout_template.card_number && (
+                  <>
+                    <span>Карта:</span>
+                    <code className="copy-target">{screening.payout_template.card_number}</code>
+                  </>
+                )}
+                {screening.payout_template.phone && (
+                  <>
+                    <span>СБП по телефону:</span>
+                    <code className="copy-target">{screening.payout_template.phone}</code>
+                  </>
+                )}
+                {screening.payout_template.bank_name && (
+                  <>
+                    <span>Банк:</span>
+                    <span>{screening.payout_template.bank_name}</span>
+                  </>
+                )}
+                <span>Сумма:</span>
+                <b>{Number(booking.total_amount).toFixed(0)} ₽</b>
+              </div>
+              {screening.payout_template.note && (
+                <p className="muted" style={{ marginTop: 10, fontSize: 13 }}>{screening.payout_template.note}</p>
+              )}
+              <p className="muted" style={{ marginTop: 10, fontSize: 12 }}>
+                После перевода в Фазе 5 здесь появится загрузка чека. Пока подтверждение производит администратор вручную.
+              </p>
+            </div>
+          ) : (
+            <div className="hint-box">Реквизиты для перевода не настроены организатором показа.</div>
+          )}
+
+          <div className="payment-options" style={{ marginTop: 12 }}>
+            <button className="payment-option" disabled>
+              <div className="payment-name">Карта</div>
+              <div className="muted" style={{ fontSize: 12 }}>Скоро</div>
+            </button>
+            <button className="payment-option" disabled>
+              <div className="payment-name">СБП (автоматически)</div>
+              <div className="muted" style={{ fontSize: 12 }}>Скоро</div>
+            </button>
+          </div>
+
+          <div className="row gap" style={{ marginTop: 16, justifyContent: "flex-end" }}>
+            {isAdmin && (
+              <button className="primary" onClick={markPaid} disabled={busy}>
+                [Админ] Пометить оплаченной
+              </button>
+            )}
+            <button className="ghost danger-on-hover" onClick={cancel} disabled={busy}>Отменить бронь</button>
+          </div>
+        </div>
+      )}
+
+      {isPaid && (
+        <div className="hint-box" style={{ marginTop: 12 }}>
+          Бронь оплачена. QR-билет для входа доступен в разделе <Link to="/profile" className="rooftop-link">«Профиль»</Link> (Фаза 4).
+          Точный адрес крыши теперь открыт на её странице.
+        </div>
+      )}
+
+      <div className="card" style={{ marginTop: 12 }}>
+        <div className="muted" style={{ fontSize: 12 }}>Код для входа на показ (если QR не сработает):</div>
+        <div style={{ fontFamily: "monospace", fontSize: 24, letterSpacing: ".15em", marginTop: 6 }}>{booking.short_code}</div>
+      </div>
+    </div>
+  );
+}
