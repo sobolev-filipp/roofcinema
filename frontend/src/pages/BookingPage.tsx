@@ -58,6 +58,7 @@ export default function BookingPage() {
   const isPausedForReceipt = isWaiting && pendingReceipt !== null;
 
   async function cancel() {
+    if (!booking) return;
     const wasPaid = booking.status === "paid" || booking.status === "paid_by_balance";
     const ok = await confirm({
       title: "Отменить бронь?",
