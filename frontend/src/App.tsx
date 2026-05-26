@@ -21,6 +21,7 @@ import ManualBookingAdmin from "./pages/admin/ManualBookingAdmin";
 import RefundsAdmin from "./pages/admin/RefundsAdmin";
 import CheckInAdmin from "./pages/admin/CheckInAdmin";
 import AdminsAdmin from "./pages/admin/AdminsAdmin";
+import StatisticsAdmin from "./pages/admin/StatisticsAdmin";
 import RefundPage from "./pages/RefundPage";
 import InstallPage from "./pages/InstallPage";
 import ProfilePage from "./pages/ProfilePage";
@@ -99,6 +100,7 @@ export default function App() {
                 <Route path="manual-booking" element={<ManualBookingAdmin />} />
                 <Route path="refunds" element={<RefundsAdmin />} />
                 <Route path="check-in" element={<CheckInAdmin />} />
+                <Route path="statistics" element={<StatisticsAdmin />} />
                 <Route path="admins" element={<AdminsAdmin />} />
               </Route>
               <Route path="/install" element={<InstallPage />} />

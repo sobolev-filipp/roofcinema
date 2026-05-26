@@ -1718,6 +1718,215 @@ label {
 .sp-title { font-weight: 600; font-size: var(--fs-sm); margin-bottom: 4px; }
 .sp-meta { font-size: var(--fs-xs); color: var(--text-dim); }
 
+/* === Статистика по показу (в админ-бронированиях) === */
+.screening-stats {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--s-3);
+  margin-top: var(--s-3);
+  padding: var(--s-3);
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+}
+@media (min-width: 720px) {
+  .screening-stats { grid-template-columns: 1fr auto; align-items: stretch; }
+}
+.screening-stats-seats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--s-2);
+  min-width: 0;
+}
+.stat-seat {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: var(--s-3);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.stat-seat-full { border-color: var(--err); }
+.stat-seat-name {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.stat-seat-counts { font-size: var(--fs-lg); font-weight: 700; }
+.stat-seat-counts b { color: var(--ok); }
+.stat-seat-full .stat-seat-counts b { color: var(--err); }
+.stat-seat-bar {
+  height: 5px;
+  background: var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-top: 2px;
+}
+.stat-seat-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent-hover));
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+.stat-seat-meta { font-size: var(--fs-xs); }
+
+.screening-stats-revenue {
+  background: var(--bg-card);
+  border: 1px solid var(--accent);
+  border-radius: var(--r-sm);
+  padding: var(--s-3) var(--s-4);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-end;
+  min-width: 180px;
+}
+.stat-revenue-label {
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.stat-revenue-value {
+  font-size: var(--fs-2xl);
+  font-weight: 700;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  margin-top: 2px;
+}
+.stat-revenue-meta { font-size: var(--fs-xs); margin-top: 2px; }
+
+/* =========================================================================
+   СТРАНИЦА «СТАТИСТИКА» — сводные карточки + CSS бар-чарт + таблица
+   ========================================================================= */
+
+/* Сводные карточки сверху страницы */
+.stats-totals {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--s-3);
+}
+@media (min-width: 720px) { .stats-totals { grid-template-columns: repeat(3, 1fr); } }
+@media (min-width: 1080px) { .stats-totals { grid-template-columns: repeat(5, 1fr); } }
+
+.stats-total-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: var(--s-4);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.stc-label {
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+}
+.stc-value {
+  font-size: var(--fs-2xl);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.stc-meta { font-size: var(--fs-xs); }
+
+/* CSS бар-чарт — вертикальные столбики */
+.bar-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--s-2);
+  /* Уменьшаемся на узких экранах, но даём горизонтальный скролл если совсем тесно */
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 4px;
+  min-height: 240px;
+  -webkit-overflow-scrolling: touch;
+}
+.bar-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex: 1 1 0;
+  min-width: 44px;
+  max-width: 80px;
+  height: 220px;
+}
+.bar-value {
+  font-size: 10px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.bar-track {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+  background: linear-gradient(to bottom, transparent, rgba(255, 255, 255, 0.02));
+  border-radius: 4px 4px 0 0;
+  overflow: hidden;
+}
+.bar-fill {
+  width: 100%;
+  border-radius: 4px 4px 0 0;
+  transition: height 0.35s ease, background-color 0.2s;
+  min-height: 2px;
+}
+.bar-fill.bar-zero {
+  min-height: 2px;
+  opacity: 0.4;
+}
+.bar-label {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-dim);
+  white-space: nowrap;
+  text-align: center;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Таблица «Подробно по периодам» */
+.stats-table {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--border);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+.stats-table-header,
+.stats-table-row {
+  display: grid;
+  grid-template-columns: 1.5fr 0.8fr 1.2fr 1.4fr 0.8fr 0.8fr;
+  gap: var(--s-3);
+  padding: var(--s-3);
+  background: var(--bg-card);
+  font-size: var(--fs-sm);
+  align-items: center;
+}
+.stats-table-header {
+  background: var(--bg-elevated);
+  color: var(--text-dim);
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.stats-table-row > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* admin booking table — mobile-first stacked cards */
 .admin-bookings-table {
   display: flex;

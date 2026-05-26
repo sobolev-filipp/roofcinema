@@ -29,6 +29,7 @@ class AdminPermission(str, Enum):
     manage_payout_templates = "manage_payout_templates"   # реквизиты для оплаты
     manage_templates        = "manage_templates"          # шаблоны сообщений
     check_in                = "check_in"                  # раздел «Вход» (QR-сканер)
+    view_statistics         = "view_statistics"           # раздел «Статистика» (графики и сводки)
     manage_admins           = "manage_admins"             # просмотр/редактирование прав других админов
 
 
@@ -407,6 +408,20 @@ class RefundRequest(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     booking = relationship("Booking", back_populates="refund_request")
+
+
+class BookingTransfer(Base):
+    """Журнал переносов брони с одного показа на другой.
+    Каждое нажатие «перенести» порождает новую запись (cancelled_at не используется
+    — это иммутабельный лог событий)."""
+    __tablename__ = "booking_transfers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    booking_id: Mapped[int] = mapped_column(ForeignKey("bookings.id", ondelete="CASCADE"), nullable=False, index=True)
+    from_screening_id: Mapped[int | None] = mapped_column(ForeignKey("screenings.id", ondelete="SET NULL"), nullable=True, index=True)
+    to_screening_id: Mapped[int | None] = mapped_column(ForeignKey("screenings.id", ondelete="SET NULL"), nullable=True, index=True)
+    admin_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False, index=True)
 
 
 class MessageTemplateKind(str, Enum):

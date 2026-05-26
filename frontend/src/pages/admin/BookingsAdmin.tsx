@@ -22,6 +22,9 @@ export default function BookingsAdmin() {
   const [screeningId, setScreeningId] = useState<number | null>(null);
   const [screeningSearch, setScreeningSearch] = useState("");
   const [bookings, setBookings] = useState<Booking[]>([]);
+  // Полный список (до фильтрации по вкладке) — нужен для подсчёта статистики
+  // (остаток мест + сумма выручки), которая не должна зависеть от выбранной вкладки.
+  const [allBookings, setAllBookings] = useState<Booking[]>([]);
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(false);
   const [, force] = useState(0);
@@ -49,12 +52,13 @@ export default function BookingsAdmin() {
   }, [screeningsForTab, screeningId]);
 
   async function reload() {
-    if (!screeningId) { setBookings([]); return; }
+    if (!screeningId) { setBookings([]); setAllBookings([]); return; }
     setLoading(true);
     try {
       const params = new URLSearchParams({ screening_id: String(screeningId) });
       if (q.trim()) params.set("q", q.trim());
       const bs = await api.get<Booking[]>(`/api/bookings?${params.toString()}`);
+      setAllBookings(bs);
       const filtered = bs.filter((b) =>
         tab === "active" ? ACTIVE_STATUSES.has(b.status) : !ACTIVE_STATUSES.has(b.status)
       );
@@ -69,6 +73,36 @@ export default function BookingsAdmin() {
   useEffect(() => { const t = setInterval(() => force((x) => x + 1), 1000); return () => clearInterval(t); }, []);
 
   const selectedScreening = useMemo(() => screenings.find((s) => s.id === screeningId) ?? null, [screenings, screeningId]);
+
+  // Статистика по выбранному показу — занятость мест и оплаченная выручка.
+  // Считается из allBookings, поэтому не зависит от выбранной вкладки.
+  const SEAT_HOLDING_STATUSES = new Set(["waiting_payment", "paid", "paid_by_balance", "attended"]);
+  const PAID_STATUSES = new Set(["paid", "paid_by_balance", "attended"]);
+  const screeningStats = useMemo(() => {
+    if (!selectedScreening) return null;
+    // По каждому типу мест: сколько забронировано (в активных/оплаченных бронях)
+    const seatStats = selectedScreening.seats.map((sst) => {
+      const taken = allBookings
+        .filter((b) => SEAT_HOLDING_STATUSES.has(b.status))
+        .flatMap((b) => b.items)
+        .filter((it) => it.screening_seat_type_id === sst.id)
+        .reduce((sum, it) => sum + Number(it.qty), 0);
+      const total = Number(sst.count);
+      return {
+        id: sst.id,
+        name: sst.name,
+        total,
+        taken,
+        available: Math.max(0, total - taken),
+        price: Number(sst.price),
+      };
+    });
+    // Выручка — сумма total_amount по оплаченным/посещённым броням
+    const paidBookings = allBookings.filter((b) => PAID_STATUSES.has(b.status));
+    const revenue = paidBookings.reduce((sum, b) => sum + Number(b.total_amount), 0);
+    const paidCount = paidBookings.length;
+    return { seatStats, revenue, paidCount };
+  }, [selectedScreening, allBookings]); // eslint-disable-line
 
   const [extendModal, setExtendModal] = useState<{ b: Booking; minutes: number } | null>(null);
   const [transferModal, setTransferModal] = useState<{ b: Booking; target: number | null } | null>(null);
@@ -257,6 +291,51 @@ export default function BookingsAdmin() {
             </h3>
             <span className="muted" style={{ fontSize: 12 }}>обновляется в реальном времени</span>
           </div>
+
+          {/* Статистика показа: занятость мест + выручка */}
+          {screeningStats && (
+            <div className="screening-stats" style={{ marginTop: 14 }}>
+              <div className="screening-stats-seats">
+                {screeningStats.seatStats.length === 0 ? (
+                  <div className="muted" style={{ fontSize: 13 }}>У показа не настроены типы мест.</div>
+                ) : (
+                  screeningStats.seatStats.map((s) => {
+                    const pct = s.total > 0 ? Math.round((s.taken / s.total) * 100) : 0;
+                    const isFull = s.available === 0 && s.total > 0;
+                    return (
+                      <div key={s.id} className={"stat-seat" + (isFull ? " stat-seat-full" : "")}>
+                        <div className="stat-seat-name">{s.name}</div>
+                        <div className="stat-seat-counts">
+                          <b>{s.available}</b>
+                          <span className="muted"> / {s.total}</span>
+                        </div>
+                        <div className="stat-seat-bar">
+                          <div className="stat-seat-bar-fill" style={{ width: `${pct}%` }} />
+                        </div>
+                        <div className="stat-seat-meta muted">
+                          {isFull ? "мест нет" : `занято ${s.taken} из ${s.total}`}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+              <div className="screening-stats-revenue">
+                <div className="stat-revenue-label muted">Оплачено</div>
+                <div className="stat-revenue-value">
+                  {screeningStats.revenue.toLocaleString("ru-RU")} ₽
+                </div>
+                <div className="stat-revenue-meta muted">
+                  {screeningStats.paidCount === 0
+                    ? "нет оплаченных броней"
+                    : `${screeningStats.paidCount} ${
+                        screeningStats.paidCount === 1 ? "бронь" :
+                        screeningStats.paidCount < 5 ? "брони" : "броней"
+                      }`}
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="field" style={{ marginTop: 12 }}>
             <label>Поиск по ФИО / email / коду брони</label>

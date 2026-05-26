@@ -17,7 +17,8 @@ const ALL_TABS = [
   { to: "/admin/refunds",          label: "Возвраты",       key: "refunds",   perm: "manage_refunds" },
   { to: "/admin/payout-templates", label: "Реквизиты",      key: "payout",    perm: "manage_payout_templates" },
   { to: "/admin/templates",        label: "Шаблоны",        key: "templates", perm: "manage_templates" },
-  { to: "/admin/check-in",         label: "🎟 Вход",        key: "checkin",   perm: "check_in" },
+  { to: "/admin/check-in",         label: "Вход",           key: "checkin",   perm: "check_in" },
+  { to: "/admin/statistics",       label: "Статистика",     key: "stats",     perm: "view_statistics" },
   { to: "/admin/admins",           label: "Администраторы", key: "admins",    perm: "manage_admins" },
 ] as const;
 

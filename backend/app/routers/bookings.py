@@ -15,6 +15,7 @@ from ..models import (
     Booking,
     BookingItem,
     BookingStatus,
+    BookingTransfer,
     PaymentReceipt,
     PaymentReceiptStatus,
     RefundRequest,
@@ -478,9 +479,15 @@ def extend_booking(booking_id: int, minutes: int, db: Session = Depends(get_db))
     return _to_out(db.query(Booking).options(*_eager()).filter(Booking.id == b.id).first())
 
 
-@router.post("/{booking_id}/transfer", response_model=BookingOut, dependencies=[Depends(require_perm("manage_transfers"))])
-def transfer_booking(booking_id: int, target_screening_id: int, db: Session = Depends(get_db)):
-    """Перенести бронь на другой показ. Требует, чтобы у цели были типы мест с теми же именами и хватало мест."""
+@router.post("/{booking_id}/transfer", response_model=BookingOut)
+def transfer_booking(
+    booking_id: int,
+    target_screening_id: int,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_perm("manage_transfers")),
+):
+    """Перенести бронь на другой показ. Требует, чтобы у цели были типы мест с теми же именами и хватало мест.
+    Каждое успешное действие пишется в booking_transfers для статистики."""
     b = db.query(Booking).options(selectinload(Booking.items)).filter(Booking.id == booking_id).first()
     if not b:
         raise HTTPException(status_code=404, detail="Бронь не найдена")
@@ -518,6 +525,13 @@ def transfer_booking(booking_id: int, target_screening_id: int, db: Session = De
     if b.status == BookingStatus.waiting_payment.value:
         b.expires_at = datetime.utcnow() + timedelta(minutes=target.booking_window_minutes)
     b.note = (b.note or "") + f"\n[Перенесено с показа #{old_screening_id} на #{target.id}]"
+    # Пишем событие в журнал переносов (для статистики)
+    db.add(BookingTransfer(
+        booking_id=b.id,
+        from_screening_id=old_screening_id,
+        to_screening_id=target.id,
+        admin_id=admin.id,
+    ))
     db.commit()
     _broadcast(old_screening_id, "updated", b.id)
     _broadcast(target.id, "updated", b.id)

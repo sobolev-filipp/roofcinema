@@ -24,6 +24,7 @@ const PERM_OPTIONS: { value: string; label: string }[] = [
   { value: "manage_payout_templates", label: "Управлять реквизитами" },
   { value: "manage_templates",        label: "Редактировать шаблоны сообщений" },
   { value: "check_in",                label: "Раздел «Вход» (QR-сканер)" },
+  { value: "view_statistics",         label: "Смотреть статистику" },
 ];
 
 export default function RooftopAdmin() {

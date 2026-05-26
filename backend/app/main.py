@@ -10,11 +10,11 @@ from sqlalchemy.orm import Session
 from .config import get_settings
 from .db import Base, SessionLocal, engine
 from .email_service import send_booking_window_opened
-from .models import LoginCode, Rooftop, Screening, ScreeningBookingNotify, User, UserRole
+from .models import BookingTransfer, LoginCode, Rooftop, Screening, ScreeningBookingNotify, User, UserRole
 from .routers import (
     admin_bookings, admin_users, attendees, auth, bookings, cities, geocode, message_templates,
     movie_search, movies, payout_templates, receipts, refunds, rooftops,
-    screening_notify, screenings, seat_types, uploads, users, ws,
+    screening_notify, screenings, seat_types, statistics, uploads, users, ws,
 )
 from .security import hash_password
 from .utils import now_in_tz
@@ -220,6 +220,7 @@ app.include_router(message_templates.router)
 app.include_router(admin_bookings.router)
 app.include_router(admin_users.router)
 app.include_router(refunds.router)
+app.include_router(statistics.router)
 app.include_router(uploads.router)
 app.include_router(geocode.router)
 app.include_router(ws.router)
