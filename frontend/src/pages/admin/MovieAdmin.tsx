@@ -198,7 +198,11 @@ export default function MovieAdmin() {
       }
       // Закрываем редактор и возвращаемся в список — пользователь увидит,
       // что действие завершилось.
-      notify({ title: isNew ? "Фильм создан" : "Сохранено", kind: "success" });
+      notify({
+        title: isNew ? "Фильм создан" : "Сохранено",
+        message: isNew ? "Можно добавить кадры и постер." : "Изменения применены.",
+        kind: "success",
+      });
       nav("/admin/movies");
     } catch (e: any) {
       setErr(e.message);
