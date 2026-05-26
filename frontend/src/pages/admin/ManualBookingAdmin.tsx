@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import {
   api,
   type Booking,
+  type City,
   type MessageTemplate,
   type Screening,
   type UserSearchHit,
@@ -43,12 +44,19 @@ export default function ManualBookingAdmin() {
 
   const [createdBooking, setCreatedBooking] = useState<Booking | null>(null);
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
+  const [preInfoTemplates, setPreInfoTemplates] = useState<MessageTemplate[]>([]);
+  const [cities, setCities] = useState<City[]>([]);
   const [copyStatus, setCopyStatus] = useState<string | null>(null);
+  const [preInfoCopyStatus, setPreInfoCopyStatus] = useState<string | null>(null);
 
   useEffect(() => {
     api.get<Screening[]>("/api/screenings?include_inactive=true").then(setScreenings);
     api.get<MessageTemplate[]>("/api/admin/message-templates?kind=manual_booking")
       .then(setTemplates).catch(() => setTemplates([]));
+    api.get<MessageTemplate[]>("/api/admin/message-templates?kind=pre_booking_info")
+      .then(setPreInfoTemplates).catch(() => setPreInfoTemplates([]));
+    // Cities нужны для {city} плейсхолдера — в Screening.rooftop есть только city_id
+    api.get<City[]>("/api/cities").then(setCities).catch(() => setCities([]));
   }, []);
 
   // активные показы для пикера
@@ -138,6 +146,41 @@ export default function ManualBookingAdmin() {
     setCreatedBooking(null);
     setCopyStatus(null);
     setErr(null);
+  }
+
+  // Копирование шаблона «Запрос данных у пользователя» — ДО заполнения контактов.
+  // Доступные плейсхолдеры: {movie}, {starts_at}, {rooftop}, {city}.
+  async function copyPreInfoMessage() {
+    if (!screening) return;
+    const defaultTpl = preInfoTemplates.find((t) => t.is_default) ?? preInfoTemplates[0];
+    if (!defaultTpl) {
+      const ok = await confirm({
+        title: "Нет шаблона",
+        message: "Создайте шаблон типа «Запрос данных у пользователя» в разделе «Шаблоны».",
+        confirmText: "Перейти к шаблонам",
+        cancelText: "Закрыть",
+      });
+      if (ok) window.location.href = "/admin/templates";
+      return;
+    }
+    const cityName = cities.find((c) => c.id === screening.rooftop.city_id)?.name ?? "";
+    const ctx = {
+      movie: screening.movie.title,
+      starts_at: fmt(screening.starts_at),
+      rooftop: screening.rooftop.name,
+      city: cityName,
+    };
+    try {
+      const res = await api.post<{ rendered: string }>("/api/admin/message-templates/preview", {
+        text: defaultTpl.text,
+        context: ctx,
+      });
+      await navigator.clipboard.writeText(res.rendered);
+      setPreInfoCopyStatus("Скопировано в буфер");
+      setTimeout(() => setPreInfoCopyStatus(null), 2500);
+    } catch (e: any) {
+      await notify({ title: "Не удалось", message: e.message, kind: "error" });
+    }
   }
 
   // отрисовка шаблона + копирование в буфер
@@ -288,6 +331,25 @@ export default function ManualBookingAdmin() {
             <p className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
               Введите email/телефон/ФИО — найдём в аккаунтах и в прошлых бронях. Клик по подсказке заполнит все поля.
             </p>
+
+            {/* Кнопка: запросить данные у пользователя (шаблон pre_booking_info) */}
+            <div
+              className="hint-box"
+              style={{ marginBottom: 12, fontSize: 13, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}
+            >
+              <span style={{ flex: 1, minWidth: 200 }}>
+                Если ещё не получили данные гостя — отправьте ему готовое сообщение с просьбой
+                прислать ФИО, email и телефон.
+              </span>
+              <button
+                type="button"
+                className="primary"
+                onClick={copyPreInfoMessage}
+                title={preInfoTemplates.length === 0 ? "Шаблон не настроен — будет предложено создать" : undefined}
+              >
+                {preInfoCopyStatus ?? "📋 Запросить данные"}
+              </button>
+            </div>
             <div className="field" style={{ position: "relative" }}>
               <label>Поиск</label>
               <input

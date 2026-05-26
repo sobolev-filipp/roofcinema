@@ -92,11 +92,33 @@
 html, body { height: 100%; margin: 0; }
 #root { min-height: 100%; }
 
+/* Тёмная цветовая схема — браузер сам перекрашивает в светлый
+   нативные элементы (иконку календаря у <input type="date">,
+   часов у <input type="time">, спиннеры у <input type="number">). */
+html { color-scheme: dark; }
+
 body {
   background: var(--bg);
   color: var(--text);
   font-size: var(--fs-base);
   line-height: 1.45;
+}
+
+/* Дополнительно: WebKit-специфичная инверсия иконки даты/времени —
+   некоторые сборки Chrome игнорируют color-scheme для нативных picker-иконок. */
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator,
+input[type="month"]::-webkit-calendar-picker-indicator,
+input[type="week"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.85);
+  cursor: pointer;
+  opacity: 0.85;
+}
+input[type="date"]::-webkit-calendar-picker-indicator:hover,
+input[type="time"]::-webkit-calendar-picker-indicator:hover,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
 }
 body.no-scroll { overflow: hidden; }
 
@@ -304,25 +326,35 @@ label {
   display: inline-block;
   font-size: var(--fs-xs);
   font-weight: 600;
-  padding: 3px 8px;
+  padding: 3px 10px;
   border-radius: var(--r-full);
   border: 1px solid var(--border);
   color: var(--text-dim);
   letter-spacing: 0.02em;
   text-transform: uppercase;
+  white-space: nowrap;       /* «По умолчанию» не должно ломаться по словам */
 }
-.badge.accent { color: var(--accent); border-color: var(--accent); }
+/* Акцентный бейдж — сплошной красный фон с белым текстом (бывшая красная надпись
+   на тёмном фоне смотрелась слишком пёстро). */
+.badge.accent {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
 
 .status-pill {
   display: inline-block;
   font-size: var(--fs-xs);
-  font-weight: 600;
-  padding: 4px 10px;
+  font-weight: 700;
+  padding: 4px 12px;
   border-radius: var(--r-full);
-  border: 1px solid var(--text-dim);
-  color: var(--text-dim);
+  /* border и color устанавливаются inline-стилем как currentColor */
+  border: 1px solid currentColor;
+  /* мягкая полупрозрачная заливка того же цвета, чтобы текст не казался «висящим» */
+  background: color-mix(in srgb, currentColor 16%, transparent);
   letter-spacing: 0.04em;
   text-transform: uppercase;
+  white-space: nowrap;       /* статусы вроде «Срок оплаты вышел» не должны переноситься */
 }
 
 .empty {
@@ -655,22 +687,23 @@ label {
     backdrop-filter: saturate(160%) blur(16px);
     -webkit-backdrop-filter: saturate(160%) blur(16px);
     border-top: 1px solid var(--border);
-    /* Отступ снизу = safe-area (iOS home-indicator) */
+    /* Отступ снизу = safe-area (iOS home-indicator). Фон панели растягивается
+       до самого низа экрана, иконки приподнимаются над home-баром. */
     padding-bottom: env(safe-area-inset-bottom);
     justify-content: space-around;
     align-items: stretch;
   }
 
-  /* Каждая вкладка */
+  /* Каждая вкладка — компактная, без лишнего воздуха */
   .bnav-item {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 3px;
+    gap: 2px;
     flex: 1;
     min-width: 0;
-    padding: 10px 6px 8px;
+    padding: 6px 4px 5px;
     color: var(--text-faint);
     font-size: 10px;
     font-weight: 500;
@@ -685,10 +718,11 @@ label {
   .bnav-item svg { flex-shrink: 0; transition: transform 0.15s; }
   .bnav-item.active svg { transform: scale(1.08); }
 
-  /* Основной контент получает отступ снизу, чтобы не прятаться под панелью.
-     :has(.bottom-nav) срабатывает только когда Header в DOM (т.е. не на login/register). */
+  /* Основной контент получает отступ снизу, чтобы кнопки в карточках
+     не оказывались под панелью и были удобны для тапа.
+     Запас 78px учитывает: ~50px содержимое + 28px клиренс. */
   body:has(.bottom-nav) {
-    padding-bottom: calc(62px + env(safe-area-inset-bottom));
+    padding-bottom: calc(78px + env(safe-area-inset-bottom));
   }
 }
 
@@ -871,19 +905,23 @@ label {
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--r-full);
-  padding: 3px;
+  /* Внутренний отступ должен быть заметно больше радиуса «верхнего колпачка»
+     кнопки, чтобы скруглённые пилюли не выпирали за края контейнера. */
+  padding: 6px;
+  gap: 2px;
   width: 100%;
 }
 .seg button {
   background: transparent;
   border: none;
-  padding: 8px var(--s-3);
+  padding: 8px var(--s-4);
   height: auto;
   font-size: var(--fs-sm);
   color: var(--text-dim);
   border-radius: var(--r-full);
   font-weight: 500;
   flex: 1;
+  white-space: nowrap;
 }
 .seg button:hover { background: transparent; color: var(--text); }
 .seg button.active {
@@ -1590,9 +1628,17 @@ label {
   border-bottom: 1px solid var(--border);
   margin: var(--s-4) calc(var(--container-pad) * -1) var(--s-5);
   padding: 0 var(--container-pad);
+  /* Только горизонтальный скролл; вертикальная прокрутка не должна возникать */
   overflow-x: auto;
+  overflow-y: hidden;
+  flex-wrap: nowrap;
   scrollbar-width: none;
   -ms-overflow-style: none;
+  /* Плавная свайп-прокрутка на touch-устройствах */
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x proximity;
+  /* Чтобы вкладки не цеплялись за вертикальный жест */
+  touch-action: pan-x;
 }
 .admin-tabs::-webkit-scrollbar { display: none; }
 .admin-tab {
@@ -1605,6 +1651,7 @@ label {
   transition: color 0.15s, border-color 0.15s;
   white-space: nowrap;
   flex-shrink: 0;
+  scroll-snap-align: start;
 }
 .admin-tab:hover { color: var(--text); }
 .admin-tab.active { color: var(--text); border-bottom-color: var(--accent); }

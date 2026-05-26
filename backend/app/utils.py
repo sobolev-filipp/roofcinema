@@ -84,6 +84,11 @@ TEMPLATE_PLACEHOLDERS: dict[str, list[str]] = {
         "{amount}", "{expires_at}", "{booking_link}", "{claim_link}",
         "{payout_details}", "{items}",
     ],
+    "pre_booking_info": [
+        # Этот шаблон копируется ДО бронирования — данных о пользователе/деньгах ещё нет.
+        # Доступны только данные показа.
+        "{movie}", "{starts_at}", "{rooftop}", "{city}",
+    ],
     "post_payment": [
         "{full_name}", "{movie}", "{starts_at}", "{rooftop}", "{city}",
         "{rooftop_address}", "{short_code}", "{qr_image_link}", "{items}",

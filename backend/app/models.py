@@ -412,6 +412,7 @@ class RefundRequest(Base):
 class MessageTemplateKind(str, Enum):
     """Назначение шаблона. Один kind может иметь несколько шаблонов, один помечен default."""
     manual_booking = "manual_booking"               # текст для отправки пользователю при ручной броне
+    pre_booking_info = "pre_booking_info"           # запрос данных у пользователя ПЕРЕД ручной бронью
     post_payment = "post_payment"                   # после подтверждения оплаты (с QR и кодом)
     user_cancel_notice = "user_cancel_notice"       # письмо пользователю об отмене брони
     admin_cancel_screening = "admin_cancel_screening"  # отмена всего показа

@@ -160,6 +160,7 @@ export type ScreeningNotifySubscription = {
 
 export type MessageTemplateKind =
   | "manual_booking"
+  | "pre_booking_info"
   | "post_payment"
   | "user_cancel_notice"
   | "admin_cancel_screening"
@@ -178,6 +179,7 @@ export type MessageTemplate = {
 
 export const TEMPLATE_KIND_LABELS: Record<MessageTemplateKind, string> = {
   manual_booking: "Ручное бронирование (до оплаты)",
+  pre_booking_info: "Запрос данных у пользователя",
   post_payment: "После оплаты (с QR-кодом)",
   user_cancel_notice: "Отмена брони (письмо пользователю)",
   admin_cancel_screening: "Отмена показа целиком",
@@ -283,6 +285,9 @@ export type BookingScreeningInfo = {
   rooftop_id: number;
   rooftop_name: string;
   city_name: string;
+  /** IANA таймзона города (например, "Asia/Vladivostok") — для корректного отображения
+   *  expires_at (хранится в UTC) и starts_at (хранится наивно в локальном времени крыши). */
+  city_timezone: string;
   rooftop_address: string | null;
 };
 

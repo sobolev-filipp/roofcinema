@@ -323,6 +323,7 @@ class ScreeningNotifyOut(BaseModel):
 
 ALLOWED_TEMPLATE_KINDS = (
     "manual_booking",
+    "pre_booking_info",
     "post_payment",
     "user_cancel_notice",
     "admin_cancel_screening",
@@ -441,7 +442,9 @@ class BookingCreateIn(BaseModel):
 
 class BookingScreeningInfo(BaseModel):
     """Урезанные данные о показе/фильме/крыше для отображения в брони.
-    rooftop_address заполняется только для оплаченных/посещённых броней."""
+    rooftop_address заполняется только для оплаченных/посещённых броней.
+    city_timezone — нужен фронту, чтобы корректно показать expires_at (хранится в UTC)
+    и starts_at (хранится как наивное локальное время крыши)."""
     model_config = ConfigDict(from_attributes=True)
     id: int
     starts_at: datetime
@@ -451,6 +454,7 @@ class BookingScreeningInfo(BaseModel):
     rooftop_id: int
     rooftop_name: str
     city_name: str
+    city_timezone: str = "Europe/Moscow"
     rooftop_address: str | None = None
 
 

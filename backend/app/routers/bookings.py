@@ -132,6 +132,7 @@ def _to_out(b: Booking) -> BookingOut:
             rooftop_id=s.rooftop_id,
             rooftop_name=s.rooftop.name if s.rooftop else "",
             city_name=(s.rooftop.city.name if s.rooftop and s.rooftop.city else ""),
+            city_timezone=(s.rooftop.city.timezone if s.rooftop and s.rooftop.city else "Europe/Moscow"),
             rooftop_address=(s.rooftop.address if s.rooftop and reveal_address else None),
         )
     # total_guests: сумма qty * capacity по items (snapshot capacity на момент брони

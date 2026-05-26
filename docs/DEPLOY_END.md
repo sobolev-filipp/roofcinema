@@ -536,6 +536,12 @@ git push origin main
 /var/www/roofcinema/deploy.sh
 ```
 
+**Шаг 3 - Если нужно перезагрузить сервер
+
+```bash
+systemctl restart roofcinema
+```
+
 База данных, загруженные файлы и `.env` не затрагиваются.
 
 ---

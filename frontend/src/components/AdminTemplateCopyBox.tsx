@@ -3,8 +3,29 @@ import { Link } from "react-router-dom";
 import { api, type Booking, type MessageTemplate, type MessageTemplateKind, type Screening } from "../api";
 import { useUI } from "../ui";
 
-const fmt = (iso: string) =>
-  new Date(iso).toLocaleString("ru-RU", { dateStyle: "long", timeStyle: "short" });
+/** Форматирование «локального наивного» времени (например, starts_at — оно уже хранится
+ *  в локальном времени крыши, без timezone-маркера). Просто парсим компоненты строки
+ *  и выводим как есть в часовом поясе крыши. */
+function fmtNaiveLocal(iso: string): string {
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+  if (!m) return iso;
+  const months = ["января", "февраля", "марта", "апреля", "мая", "июня",
+                  "июля", "августа", "сентября", "октября", "ноября", "декабря"];
+  const [, y, mo, d, hh, mm] = m;
+  return `${parseInt(d, 10)} ${months[parseInt(mo, 10) - 1]} ${y} г., ${hh}:${mm}`;
+}
+
+/** Форматирование UTC-времени (например, expires_at — хранится как datetime.utcnow())
+ *  в указанной часовой зоне. Если строка пришла без 'Z', добавляем его — иначе JS
+ *  посчитает её локальной для браузера и сдвинет на разницу с UTC. */
+function fmtUtcInTz(iso: string, tz: string): string {
+  const utcIso = iso.endsWith("Z") || /[+-]\d{2}:?\d{2}$/.test(iso) ? iso : iso + "Z";
+  return new Date(utcIso).toLocaleString("ru-RU", {
+    dateStyle: "long",
+    timeStyle: "short",
+    timeZone: tz,
+  });
+}
 
 const qrImageUrl = (token: string) =>
   `https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&qzone=1&color=111111&bgcolor=ffffff&data=${encodeURIComponent(token)}`;
@@ -79,15 +100,16 @@ export default function AdminTemplateCopyBox({ booking }: Props) {
       });
       return;
     }
+    const tz = info!.city_timezone || "Europe/Moscow";
     const ctx: Record<string, string> = {
       full_name: booking.full_name,
       movie: info!.movie_title,
-      starts_at: fmt(info!.starts_at),
+      starts_at: fmtNaiveLocal(info!.starts_at),
       rooftop: info!.rooftop_name,
       city: info!.city_name,
       rooftop_address: info!.rooftop_address ?? "(адрес будет в сообщении после оплаты)",
       amount: Number(booking.total_amount).toFixed(0),
-      expires_at: fmt(booking.expires_at),
+      expires_at: fmtUtcInTz(booking.expires_at, tz),
       booking_link: `${window.location.origin}/bookings/${booking.id}`,
       claim_link: "",
       short_code: booking.short_code,

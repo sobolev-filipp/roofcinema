@@ -43,10 +43,12 @@ export default function Header() {
     return () => window.removeEventListener("keydown", h);
   }, [open]);
 
-  // Ссылки для десктопного меню и drawer (Установить скрываем в PWA — уже установлено)
+  // Ссылки для десктопного меню и drawer (Установить скрываем в PWA — уже установлено).
+  // Порядок: Афиша → Брони → Админ → Профиль (Профиль всегда последним, как «свой» раздел).
   const links: { to: string; label: string; end?: boolean }[] = [{ to: "/", label: "Афиша", end: true }];
-  if (user) links.push({ to: "/bookings", label: "Мои брони" }, { to: "/profile", label: "Профиль" });
+  if (user) links.push({ to: "/bookings", label: "Мои брони" });
   if (user?.role === "super_admin" || user?.role === "admin") links.push({ to: "/admin", label: "Админ" });
+  if (user) links.push({ to: "/profile", label: "Профиль" });
   if (!isPWA) links.push({ to: "/install", label: "Установить" });
 
   const isAdmin = user?.role === "super_admin" || user?.role === "admin";
@@ -189,18 +191,7 @@ export default function Header() {
           </NavLink>
         )}
 
-        {/* Профиль (только авторизован) */}
-        {user && (
-          <NavLink to="/profile" className={({ isActive }) => "bnav-item" + (isActive ? " active" : "")}>
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
-              <circle cx="12" cy="7" r="4" />
-            </svg>
-            <span>Профиль</span>
-          </NavLink>
-        )}
-
-        {/* Админ (только admin/super_admin) */}
+        {/* Админ (только admin/super_admin) — идёт раньше Профиля */}
         {isAdmin && (
           <NavLink to="/admin" className={({ isActive }) => "bnav-item" + (isActive ? " active" : "")}>
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -210,6 +201,17 @@ export default function Header() {
               <rect x="14" y="14" width="7" height="7" rx="1" />
             </svg>
             <span>Админ</span>
+          </NavLink>
+        )}
+
+        {/* Профиль (только авторизован) — всегда последним */}
+        {user && (
+          <NavLink to="/profile" className={({ isActive }) => "bnav-item" + (isActive ? " active" : "")}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
+              <circle cx="12" cy="7" r="4" />
+            </svg>
+            <span>Профиль</span>
           </NavLink>
         )}
 

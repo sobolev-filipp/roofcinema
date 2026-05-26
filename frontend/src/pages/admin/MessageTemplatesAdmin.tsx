@@ -9,6 +9,7 @@ import { useUI } from "../../ui";
 
 const KIND_ORDER: MessageTemplateKind[] = [
   "manual_booking",
+  "pre_booking_info",
   "post_payment",
   "user_cancel_notice",
   "admin_cancel_screening",
@@ -37,6 +38,7 @@ const PLACEHOLDER_HINTS: Record<string, string> = {
 
 const KIND_HINTS: Record<MessageTemplateKind, string> = {
   manual_booking: "Текст для отправки пользователю до оплаты. Используйте {expires_at} — дедлайн оплаты, {amount} — сумму, {booking_link} — ссылку на бронь, {rooftop_address} — адрес крыши, {payout_details} — реквизиты оплаты, {items} — список мест.",
+  pre_booking_info: "Сообщение ПЕРЕД ручным бронированием — отправляется пользователю, чтобы он прислал ФИО, email, телефон. Кнопка копирования есть в разделе «+ Бронь вручную». Доступны только данные показа: {movie}, {starts_at}, {rooftop}, {city}.",
   post_payment: "Текст после подтверждения оплаты — с QR-кодом и числовым кодом входа. Используйте {short_code} — код входа, {qr_image_link} — ссылку на QR, {rooftop_address} — адрес, {items} — список мест.",
   user_cancel_notice: "Письмо, которое уйдёт пользователю при отмене его брони.",
   admin_cancel_screening: "Уведомление всем гостям при отмене показа целиком.",
