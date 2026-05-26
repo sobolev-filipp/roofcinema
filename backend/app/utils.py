@@ -86,8 +86,8 @@ TEMPLATE_PLACEHOLDERS: dict[str, list[str]] = {
     ],
     "pre_booking_info": [
         # Этот шаблон копируется ДО бронирования — данных о пользователе/деньгах ещё нет.
-        # Доступны только данные показа.
-        "{movie}", "{starts_at}", "{rooftop}", "{city}",
+        # Доступны только данные показа + актуальный список типов мест с ценами и остатком.
+        "{movie}", "{starts_at}", "{rooftop}", "{city}", "{seat_types}",
     ],
     "post_payment": [
         "{full_name}", "{movie}", "{starts_at}", "{rooftop}", "{city}",

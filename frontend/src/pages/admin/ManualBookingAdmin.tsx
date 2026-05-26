@@ -148,8 +148,27 @@ export default function ManualBookingAdmin() {
     setErr(null);
   }
 
+  /** Собирает список доступных типов мест для подстановки в шаблон.
+   *  Каждая позиция на отдельной строке, формат: «- Название — цена ₽ (осталось N из M)».
+   *  Скрываем типы, где count=0 — их в показе фактически нет. */
+  function buildSeatTypesText(): string {
+    if (!screening) return "";
+    return screening.seats
+      .filter((sst) => Number(sst.count) > 0)
+      .map((sst) => {
+        const price = Number(sst.price).toLocaleString("ru-RU");
+        const total = Number(sst.count);
+        const left = Math.max(0, Number(sst.seats_available ?? sst.count));
+        const cap = Number(sst.capacity ?? 1);
+        const capNote = cap > 1 ? `, по ${cap} ${cap < 5 ? "гостя" : "гостей"} на место` : "";
+        const leftNote = left === 0 ? "мест нет" : `осталось ${left} из ${total}`;
+        return `- ${sst.name} — ${price} ₽ (${leftNote}${capNote})`;
+      })
+      .join("\n");
+  }
+
   // Копирование шаблона «Запрос данных у пользователя» — ДО заполнения контактов.
-  // Доступные плейсхолдеры: {movie}, {starts_at}, {rooftop}, {city}.
+  // Доступные плейсхолдеры: {movie}, {starts_at}, {rooftop}, {city}, {seat_types}.
   async function copyPreInfoMessage() {
     if (!screening) return;
     const defaultTpl = preInfoTemplates.find((t) => t.is_default) ?? preInfoTemplates[0];
@@ -169,6 +188,7 @@ export default function ManualBookingAdmin() {
       starts_at: fmt(screening.starts_at),
       rooftop: screening.rooftop.name,
       city: cityName,
+      seat_types: buildSeatTypesText(),
     };
     try {
       const res = await api.post<{ rendered: string }>("/api/admin/message-templates/preview", {
