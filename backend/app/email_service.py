@@ -63,6 +63,23 @@ def send_password_reset(email: str, link: str) -> None:
     send_email(email, "Сброс пароля — Кино на крыше", body)
 
 
+def send_login_code(email: str, code: str) -> None:
+    body = (
+        f"Здравствуйте!\n\n"
+        f"Код для входа в аккаунт: {code}\n\n"
+        f"Введите его на странице входа. Код действует 5 минут.\n\n"
+        f"Если вы не пытались войти — немедленно смените пароль: кто-то знает ваши данные."
+    )
+    html = (
+        f"<p>Здравствуйте!</p>"
+        f"<p>Ваш код для входа:</p>"
+        f"<h1 style='letter-spacing:8px;font-size:36px;font-family:monospace;color:#6d28d9'>{code}</h1>"
+        f"<p>Код действует <b>5 минут</b>.</p>"
+        f"<p style='color:#888;font-size:13px'>Если вы не пытались войти — немедленно смените пароль.</p>"
+    )
+    send_email(email, "Код для входа — Кино на крыше", body, html)
+
+
 def send_payment_approved(email: str, movie_title: str, starts_at_text: str, booking_id: int, short_code: str) -> None:
     body = (
         f"Здравствуйте!\n\n"

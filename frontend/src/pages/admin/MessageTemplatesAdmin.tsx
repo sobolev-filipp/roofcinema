@@ -37,7 +37,7 @@ const PLACEHOLDER_HINTS: Record<string, string> = {
 
 const KIND_HINTS: Record<MessageTemplateKind, string> = {
   manual_booking: "Текст для отправки пользователю до оплаты. Используйте {expires_at} — дедлайн оплаты, {amount} — сумму, {booking_link} — ссылку на бронь, {rooftop_address} — адрес крыши, {payout_details} — реквизиты оплаты, {items} — список мест.",
-  post_payment: "Текст после подтверждения оплаты — с QR-кодом и числовым кодом входа. Используется как «копировать» с открытой брони.",
+  post_payment: "Текст после подтверждения оплаты — с QR-кодом и числовым кодом входа. Используйте {short_code} — код входа, {qr_image_link} — ссылку на QR, {rooftop_address} — адрес, {items} — список мест.",
   user_cancel_notice: "Письмо, которое уйдёт пользователю при отмене его брони.",
   admin_cancel_screening: "Уведомление всем гостям при отмене показа целиком.",
   refund_link: "Сопроводительный текст к ссылке на форму ввода реквизитов для возврата.",

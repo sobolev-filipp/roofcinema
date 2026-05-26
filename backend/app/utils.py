@@ -86,7 +86,7 @@ TEMPLATE_PLACEHOLDERS: dict[str, list[str]] = {
     ],
     "post_payment": [
         "{full_name}", "{movie}", "{starts_at}", "{rooftop}", "{city}",
-        "{rooftop_address}", "{short_code}", "{qr_image_link}",
+        "{rooftop_address}", "{short_code}", "{qr_image_link}", "{items}",
     ],
     "user_cancel_notice": [
         "{full_name}", "{movie}", "{starts_at}", "{rooftop}", "{reason}",

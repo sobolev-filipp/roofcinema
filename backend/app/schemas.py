@@ -8,6 +8,22 @@ class TokenOut(BaseModel):
     token_type: str = "bearer"
 
 
+class LoginChallengeOut(BaseModel):
+    """Ответ на первый шаг входа (проверка логина/пароля).
+    JWT ещё НЕ выдан — нужно подтвердить OTP-код из письма."""
+    mfa_token: str
+    expires_in: int = 300  # секунд до истечения кода
+
+
+class LoginVerifyIn(BaseModel):
+    mfa_token: str = Field(min_length=8, max_length=128)
+    code: str = Field(min_length=4, max_length=8)
+
+
+class LoginResendIn(BaseModel):
+    mfa_token: str = Field(min_length=8, max_length=128)
+
+
 class LoginIn(BaseModel):
     email: EmailStr
     password: str

@@ -357,6 +357,8 @@ label {
   backdrop-filter: saturate(160%) blur(14px);
   -webkit-backdrop-filter: saturate(160%) blur(14px);
   border-bottom: 1px solid var(--border);
+  /* Сдвигаем контент шапки ниже статус-бара телефона в PWA/standalone-режиме */
+  padding-top: env(safe-area-inset-top);
 }
 .header-inner {
   max-width: var(--container-w);
@@ -513,6 +515,12 @@ label {
   .burger { display: none; }
 }
 
+/* mobile: бургер и drawer убираем — навигация перенесена в нижнюю панель */
+@media (max-width: 879px) {
+  .burger { display: none; }
+  .mobile-drawer, .menu-backdrop { display: none; }
+}
+
 /* выдвижное мобильное меню */
 .menu-backdrop {
   position: fixed;
@@ -626,6 +634,65 @@ label {
 }
 
 /* =========================================================================
+   НИЖНЯЯ НАВИГАЦИЯ (только mobile < 880px)
+   Заменяет бургер-меню на мобильных и в PWA — привычный паттерн приложения.
+   ========================================================================= */
+
+.bottom-nav {
+  display: none; /* по умолчанию скрыта */
+}
+
+@media (max-width: 879px) {
+  /* Сама панель */
+  .bottom-nav {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: var(--z-header);
+    background: rgba(12, 12, 20, 0.97);
+    backdrop-filter: saturate(160%) blur(16px);
+    -webkit-backdrop-filter: saturate(160%) blur(16px);
+    border-top: 1px solid var(--border);
+    /* Отступ снизу = safe-area (iOS home-indicator) */
+    padding-bottom: env(safe-area-inset-bottom);
+    justify-content: space-around;
+    align-items: stretch;
+  }
+
+  /* Каждая вкладка */
+  .bnav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    flex: 1;
+    min-width: 0;
+    padding: 10px 6px 8px;
+    color: var(--text-faint);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+    line-height: 1.2;
+    text-align: center;
+    transition: color 0.15s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .bnav-item:hover { color: var(--text-dim); }
+  .bnav-item.active { color: var(--accent); }
+  .bnav-item svg { flex-shrink: 0; transition: transform 0.15s; }
+  .bnav-item.active svg { transform: scale(1.08); }
+
+  /* Основной контент получает отступ снизу, чтобы не прятаться под панелью.
+     :has(.bottom-nav) срабатывает только когда Header в DOM (т.е. не на login/register). */
+  body:has(.bottom-nav) {
+    padding-bottom: calc(62px + env(safe-area-inset-bottom));
+  }
+}
+
+/* =========================================================================
    AUTH-страницы (Login / Register)
    ========================================================================= */
 
@@ -657,6 +724,21 @@ label {
 .auth-card .sub { color: var(--text-dim); font-size: var(--fs-sm); margin-bottom: var(--s-5); }
 .auth-switch { margin-top: var(--s-4); font-size: var(--fs-sm); color: var(--text-dim); text-align: center; }
 .auth-switch a { color: var(--accent); font-weight: 500; }
+
+/* Кнопка-ссылка — выглядит как ссылка, ведёт себя как button */
+.btn-link {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: var(--accent);
+  font-size: inherit;
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.btn-link:disabled { opacity: 0.5; cursor: default; }
+.btn-link:not(:disabled):hover { opacity: 0.8; }
 
 .auth-cta {
   display: flex;

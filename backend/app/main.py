@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from .config import get_settings
 from .db import Base, SessionLocal, engine
 from .email_service import send_booking_window_opened
-from .models import Rooftop, Screening, ScreeningBookingNotify, User, UserRole
+from .models import LoginCode, Rooftop, Screening, ScreeningBookingNotify, User, UserRole
 from .routers import (
     admin_bookings, admin_users, attendees, auth, bookings, cities, geocode, message_templates,
     movie_search, movies, payout_templates, receipts, refunds, rooftops,

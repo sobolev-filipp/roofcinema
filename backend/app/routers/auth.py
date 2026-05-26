@@ -9,9 +9,9 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..deps import get_current_jti, get_current_user
-from ..email_service import send_password_reset, send_verification_code
-from ..models import EmailVerification, PasswordResetToken, User, UserRole, UserSession
-from ..schemas import LoginIn, RegisterIn, TokenOut, UserOut
+from ..email_service import send_login_code, send_password_reset, send_verification_code
+from ..models import EmailVerification, LoginCode, PasswordResetToken, User, UserRole, UserSession
+from ..schemas import LoginChallengeOut, LoginIn, LoginResendIn, LoginVerifyIn, RegisterIn, TokenOut, UserOut
 from ..security import create_access_token, hash_password, new_jti, verify_password
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -68,24 +68,99 @@ def register(payload: RegisterIn, request: Request, db: Session = Depends(get_db
     return TokenOut(access_token=token)
 
 
-@router.post("/login", response_model=TokenOut)
-def login(request: Request, form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+def _create_login_challenge(db: Session, user: User) -> LoginChallengeOut:
+    """Генерирует OTP-код, сохраняет в login_codes, отправляет на email."""
+    # Удаляем старые коды этого пользователя
+    db.query(LoginCode).filter(LoginCode.user_id == user.id).delete()
+    code = _generate_code()
+    mfa_token = secrets.token_urlsafe(32)
+    lc = LoginCode(
+        mfa_token=mfa_token,
+        user_id=user.id,
+        code=code,
+        expires_at=datetime.utcnow() + timedelta(minutes=5),
+        last_sent_at=datetime.utcnow(),
+    )
+    db.add(lc)
+    db.commit()
+    send_login_code(user.email, code)
+    return LoginChallengeOut(mfa_token=mfa_token, expires_in=300)
+
+
+@router.post("/login", response_model=LoginChallengeOut)
+def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == form.username).first()
     if not user or not verify_password(form.password, user.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Неверный email или пароль")
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Аккаунт деактивирован")
-    return TokenOut(access_token=_create_session(db, user, request))
+    return _create_login_challenge(db, user)
 
 
-@router.post("/login-json", response_model=TokenOut)
-def login_json(payload: LoginIn, request: Request, db: Session = Depends(get_db)):
+@router.post("/login-json", response_model=LoginChallengeOut)
+def login_json(payload: LoginIn, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == payload.email).first()
     if not user or not verify_password(payload.password, user.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Неверный email или пароль")
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Аккаунт деактивирован")
+    return _create_login_challenge(db, user)
+
+
+@router.post("/login-verify", response_model=TokenOut)
+def login_verify(payload: LoginVerifyIn, request: Request, db: Session = Depends(get_db)):
+    """Второй шаг входа: проверяет OTP-код и выдаёт JWT."""
+    lc = db.query(LoginCode).filter(LoginCode.mfa_token == payload.mfa_token).first()
+    if not lc:
+        raise HTTPException(status_code=400, detail="Код устарел или недействителен. Войдите заново.")
+    if lc.expires_at < datetime.utcnow():
+        db.delete(lc)
+        db.commit()
+        raise HTTPException(status_code=400, detail="Срок действия кода истёк. Войдите заново.")
+    if lc.attempts >= 5:
+        db.delete(lc)
+        db.commit()
+        raise HTTPException(status_code=429, detail="Превышено число попыток. Войдите заново.")
+    lc.attempts += 1
+    if payload.code.strip() != lc.code:
+        db.commit()
+        left = 5 - lc.attempts
+        raise HTTPException(status_code=400, detail=f"Неверный код. Попыток осталось: {left}.")
+    user = db.get(User, lc.user_id)
+    if not user or not user.is_active:
+        db.delete(lc)
+        db.commit()
+        raise HTTPException(status_code=403, detail="Аккаунт деактивирован")
+    db.delete(lc)
+    db.commit()
     return TokenOut(access_token=_create_session(db, user, request))
+
+
+@router.post("/login-resend", response_model=LoginChallengeOut)
+def login_resend(payload: LoginResendIn, db: Session = Depends(get_db)):
+    """Повторная отправка кода (не чаще раза в 60 секунд)."""
+    lc = db.query(LoginCode).filter(LoginCode.mfa_token == payload.mfa_token).first()
+    if not lc:
+        raise HTTPException(status_code=400, detail="Сессия входа не найдена. Начните заново.")
+    if lc.expires_at < datetime.utcnow():
+        db.delete(lc)
+        db.commit()
+        raise HTTPException(status_code=400, detail="Код истёк. Войдите заново.")
+    wait = 60 - (datetime.utcnow() - lc.last_sent_at).total_seconds()
+    if wait > 0:
+        raise HTTPException(status_code=429, detail=f"Подождите ещё {int(wait)} секунд")
+    user = db.get(User, lc.user_id)
+    if not user or not user.is_active:
+        raise HTTPException(status_code=403, detail="Аккаунт деактивирован")
+    # Обновляем код и время
+    new_code = _generate_code()
+    lc.code = new_code
+    lc.attempts = 0
+    lc.expires_at = datetime.utcnow() + timedelta(minutes=5)
+    lc.last_sent_at = datetime.utcnow()
+    db.commit()
+    send_login_code(user.email, new_code)
+    return LoginChallengeOut(mfa_token=lc.mfa_token, expires_in=300)
 
 
 @router.get("/me", response_model=UserOut)
