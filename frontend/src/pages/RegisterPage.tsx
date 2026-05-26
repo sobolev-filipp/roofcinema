@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api, type City } from "../api";
 import { useAuth } from "../auth";
+import { Spinner } from "../components/Loaders";
 
 export default function RegisterPage() {
   const { register } = useAuth();
@@ -80,6 +81,7 @@ export default function RegisterPage() {
           </span>
         </label>
         <button className="primary" type="submit" disabled={busy || !form.pd_consent} style={{ width: "100%", marginTop: 16 }}>
+          {busy && <Spinner />}
           {busy ? "Создаём аккаунт..." : "Создать аккаунт"}
         </button>
         <div className="auth-switch">

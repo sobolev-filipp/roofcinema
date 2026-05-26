@@ -96,6 +96,7 @@ html, body { height: 100%; margin: 0; }
    нативные элементы (иконку календаря у <input type="date">,
    часов у <input type="time">, спиннеры у <input type="number">). */
 html { color-scheme: dark; }
+html[data-theme="light"] { color-scheme: light; }
 
 body {
   background: var(--bg);
@@ -904,11 +905,10 @@ label {
   display: flex;
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: var(--r-full);
-  /* Внутренний отступ должен быть заметно больше радиуса «верхнего колпачка»
-     кнопки, чтобы скруглённые пилюли не выпирали за края контейнера. */
-  padding: 6px;
-  gap: 2px;
+  border-radius: 12px;
+  padding: 12px;
+  justify-content: space-between;
+  gap: 6px;
   width: 100%;
 }
 .seg button {
@@ -918,7 +918,7 @@ label {
   height: auto;
   font-size: var(--fs-sm);
   color: var(--text-dim);
-  border-radius: var(--r-full);
+  border-radius: 8px;
   font-weight: 500;
   flex: 1;
   white-space: nowrap;
@@ -1949,7 +1949,9 @@ label {
 .abt-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--s-1);
+  gap: 15px;
+  justify-content: center;
+  align-items: center;
   margin-top: var(--s-2);
 }
 .abt-actions button {
@@ -1985,7 +1987,22 @@ label {
     border-radius: 0;
     border: none;
   }
-  .abt-actions { margin-top: 0; }
+  /* Колонки «Места», «Сумма», «Статус», «Действия» — содержимое по центру */
+  .abt-row > span:nth-child(n+2),
+  .abt-header > span:nth-child(n+2) {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+  }
+  /* Действия — горизонтальный ряд, gap 15px */
+  .abt-row > span.abt-actions {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 15px;
+    margin-top: 0;
+  }
 }
 
 /* alloc grid */
@@ -2369,4 +2386,246 @@ button.primary.danger:hover { background: #c62828; border-color: #c62828; }
 @keyframes checkin-pop {
   from { transform: scale(0.5); opacity: 0; }
   to   { transform: scale(1);   opacity: 1; }
+}
+
+/* =========================================================================
+   ИНДИКАТОРЫ ЗАГРУЗКИ — спиннер для кнопок, скелетон для данных,
+   проектор-оверлей для блокирующих операций.
+   ========================================================================= */
+
+/* Маленький спиннер (16×16) — вставляется в кнопки */
+.spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  vertical-align: -2px;
+  margin-right: 8px;
+  opacity: 0.85;
+}
+.spinner-lg {
+  width: 28px;
+  height: 28px;
+  border-width: 3px;
+  margin-right: 0;
+  vertical-align: middle;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Кнопка в busy-состоянии: курсор waiting + opacity, спиннер уже встроен через JSX */
+button[disabled]:has(.spinner) {
+  cursor: progress;
+  opacity: 0.85;
+}
+
+/* Скелетон-плейсхолдеры данных. Базовый: серый прямоугольник с мерцанием. */
+.skeleton {
+  display: block;
+  background: linear-gradient(
+    90deg,
+    var(--bg-soft) 0%,
+    var(--bg-elevated) 50%,
+    var(--bg-soft) 100%
+  );
+  background-size: 200% 100%;
+  border-radius: var(--r-sm);
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+  min-height: 14px;
+}
+.skeleton-text  { height: 12px; margin: 6px 0; border-radius: 4px; }
+.skeleton-title { height: 22px; margin: 10px 0; width: 60%; border-radius: 5px; }
+.skeleton-card  { height: 120px; border-radius: var(--r); margin: 12px 0; }
+.skeleton-row   { height: 56px;  border-radius: var(--r-sm); margin: 8px 0; }
+.skeleton-thumb { aspect-ratio: 2 / 3; border-radius: var(--r-sm); }
+@keyframes skeleton-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* === Проектор-оверлей: блокирующий лоадер с киноматикой === */
+.projector-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.78);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  animation: ui-pop-in 0.18s ease-out;
+}
+
+/* Сцена с проектором — стилизованная: «корпус» + «луч» + «экран» */
+.projector {
+  position: relative;
+  width: 240px;
+  height: 130px;
+  display: flex;
+  align-items: center;
+}
+/* корпус проектора */
+.projector-body {
+  width: 80px;
+  height: 60px;
+  background: linear-gradient(180deg, #2a2a3e, #14141c);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  position: relative;
+  flex-shrink: 0;
+}
+/* две бобины (катушки с плёнкой) — крутятся */
+.projector-reel {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 50%, #444 0 30%, #1a1a26 35% 100%);
+  border: 2px solid #3a3a52;
+  top: -14px;
+  animation: spin 1.2s linear infinite;
+}
+.projector-reel::before,
+.projector-reel::after {
+  content: "";
+  position: absolute;
+  inset: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  opacity: 0.4;
+}
+.projector-reel::after {
+  inset: 8px;
+  background: #14141c;
+  opacity: 1;
+}
+.projector-reel-left  { left: 8px; }
+.projector-reel-right { right: 8px; animation-delay: -0.3s; }
+
+/* объектив проектора (тёмный кружок справа) */
+.projector-lens {
+  position: absolute;
+  right: -8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #0a0a0f 40%, #1f1f33 100%);
+  border: 2px solid var(--accent);
+  box-shadow: 0 0 12px var(--accent);
+}
+/* луч света от объектива до экрана */
+.projector-beam {
+  position: absolute;
+  left: 80px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 30px 0 30px 130px;
+  border-color: transparent transparent transparent rgba(229, 9, 20, 0.15);
+  animation: projector-flicker 1.6s ease-in-out infinite;
+  filter: blur(2px);
+}
+/* экран справа — куда падает луч */
+.projector-screen {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 70px;
+  height: 50px;
+  background: linear-gradient(135deg, rgba(229, 9, 20, 0.2), rgba(229, 9, 20, 0.05));
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  box-shadow: 0 0 14px rgba(229, 9, 20, 0.3);
+  animation: projector-flicker 1.6s ease-in-out infinite;
+}
+@keyframes projector-flicker {
+  0%, 100% { opacity: 1; }
+  10% { opacity: 0.7; }
+  20% { opacity: 1; }
+  55% { opacity: 0.85; }
+}
+
+.projector-caption {
+  color: var(--text);
+  font-size: var(--fs-md);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-align: center;
+  margin-top: 8px;
+}
+.projector-caption::after {
+  content: "";
+  display: inline-block;
+  width: 1ch;
+  text-align: left;
+  animation: dots 1.5s steps(4, end) infinite;
+}
+@keyframes dots {
+  0%   { content: ""; }
+  25%  { content: "."; }
+  50%  { content: ".."; }
+  75%  { content: "..."; }
+  100% { content: ""; }
+}
+
+/* =========================================================================
+   СВЕТЛАЯ ТЕМА — переопределение CSS-переменных
+   ========================================================================= */
+html[data-theme="light"] {
+  --bg:          #f5f5f7;
+  --bg-soft:     #ffffff;
+  --bg-card:     #ffffff;
+  --bg-elevated: #f0f0f5;
+  --border:      #d8d8e0;
+  --border-strong: #b8b8c8;
+  --text:        #1a1a2a;
+  --text-dim:    #5a5a6e;
+  --text-faint:  #8a8aa0;
+  --accent:      #e50914;
+  --accent-soft: rgba(229, 9, 20, 0.10);
+  --accent-hover: #c50710;
+  --ok:   #16a34a;
+  --warn: #d97706;
+  --err:  #dc2626;
+
+  --shadow-sm: 0 2px 6px rgba(0, 0, 0, 0.08);
+  --shadow:    0 8px 24px rgba(0, 0, 0, 0.12);
+  --shadow-lg: 0 18px 36px rgba(0, 0, 0, 0.18);
+}
+
+/* В светлой теме нативные picker-иконки уже светлые — инверсия не нужна */
+html[data-theme="light"] input[type="date"]::-webkit-calendar-picker-indicator,
+html[data-theme="light"] input[type="time"]::-webkit-calendar-picker-indicator,
+html[data-theme="light"] input[type="datetime-local"]::-webkit-calendar-picker-indicator,
+html[data-theme="light"] input[type="month"]::-webkit-calendar-picker-indicator,
+html[data-theme="light"] input[type="week"]::-webkit-calendar-picker-indicator {
+  filter: none;
+}
+
+/* Шапка в светлой теме должна остаться читаемой */
+html[data-theme="light"] .site-header {
+  background: rgba(255, 255, 255, 0.85);
+}
+html[data-theme="light"] .bottom-nav {
+  background: rgba(255, 255, 255, 0.97);
+}
+/* Затемнение модалок чуть прозрачнее на светлом фоне */
+html[data-theme="light"] .ui-backdrop,
+html[data-theme="light"] .menu-backdrop {
+  background: rgba(0, 0, 0, 0.4);
+}
+/* Картинка-фон проектор-оверлея — оставляем тёмный (это фокусная вспышка), но
+   сам бэкдроп чуть светлее */
+html[data-theme="light"] .projector-overlay {
+  background: rgba(20, 20, 30, 0.78);
 }

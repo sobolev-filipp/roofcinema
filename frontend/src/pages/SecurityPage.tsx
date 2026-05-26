@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
+import { Spinner } from "../components/Loaders";
 import { useUI } from "../ui";
 
 type Session = {
@@ -110,7 +111,10 @@ export default function SecurityPage() {
           <label>Повторите новый пароль</label>
           <input type="password" required minLength={6} value={pw2} onChange={(e) => setPw2(e.target.value)} />
         </div>
-        <button className="primary" type="submit" disabled={busy}>Сменить пароль</button>
+        <button className="primary" type="submit" disabled={busy}>
+          {busy && <Spinner />}
+          {busy ? "Меняем..." : "Сменить пароль"}
+        </button>
       </form>
 
       <h2 style={{ marginTop: 32 }}>Активные сессии</h2>

@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import ImageUpload from "../components/ImageUpload";
+import { Spinner } from "../components/Loaders";
 
 export default function EditProfilePage() {
   const { user, refresh } = useAuth();
@@ -75,7 +76,10 @@ export default function EditProfilePage() {
         </div>
         <div className="row gap" style={{ justifyContent: "flex-end" }}>
           <button type="button" className="ghost" onClick={() => nav("/profile")}>Отмена</button>
-          <button className="primary" type="submit" disabled={busy}>{busy ? "Сохраняем..." : "Сохранить"}</button>
+          <button className="primary" type="submit" disabled={busy}>
+            {busy && <Spinner />}
+            {busy ? "Сохраняем..." : "Сохранить"}
+          </button>
         </div>
       </form>
     </div>

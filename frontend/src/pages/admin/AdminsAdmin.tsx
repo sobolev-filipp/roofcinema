@@ -10,6 +10,7 @@
 import { useEffect, useState } from "react";
 import { api, type City, type Rooftop } from "../../api";
 import { useAuth } from "../../auth";
+import { Skeleton, Spinner } from "../../components/Loaders";
 import { useUI } from "../../ui";
 
 // ─── Типы ──────────────────────────────────────────────────────────────────
@@ -129,6 +130,7 @@ function PermEditor({
       <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
         <button className="ghost" onClick={onCancel} disabled={busy}>Отмена</button>
         <button className="primary" onClick={() => onSave(perms)} disabled={busy}>
+          {busy && <Spinner />}
           {busy ? "Сохраняем…" : "Сохранить права"}
         </button>
       </div>
@@ -316,7 +318,11 @@ export default function AdminsAdmin() {
     return ids.map(rooftopName).join(", ");
   };
 
-  if (loading) return <div className="empty">Загрузка…</div>;
+  if (loading) return (
+    <div style={{ marginTop: 16 }}>
+      <Skeleton variant="row" count={3} />
+    </div>
+  );
   if (err) return <div className="error">{err}</div>;
 
   return (

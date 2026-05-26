@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, getToken, type Movie, type MovieStill } from "../../api";
 import ImageUpload from "../../components/ImageUpload";
+import { ProjectorLoader, Spinner } from "../../components/Loaders";
 import { useUI } from "../../ui";
 
 type ExternalHit = {
@@ -91,7 +92,7 @@ function formToPayload(f: FormState) {
 }
 
 export default function MovieAdmin() {
-  const { confirm } = useUI();
+  const { confirm, notify } = useUI();
   const { id } = useParams();
   const nav = useNavigate();
   const isNew = !id;
@@ -182,18 +183,27 @@ export default function MovieAdmin() {
     setStage("form");
   }
 
+  const [saving, setSaving] = useState(false);
+
   async function save(e: React.FormEvent) {
     e.preventDefault();
+    if (saving) return;
     setErr(null); setInfo(null);
+    setSaving(true);
     try {
       if (isNew) {
-        const created = await api.post<Movie>("/api/movies", formToPayload(form));
-        nav(`/admin/movies/${created.id}`, { replace: true });
+        await api.post<Movie>("/api/movies", formToPayload(form));
       } else {
         await api.patch(`/api/movies/${id}`, formToPayload(form));
-        setInfo("Сохранено");
       }
-    } catch (e: any) { setErr(e.message); }
+      // Закрываем редактор и возвращаемся в список — пользователь увидит,
+      // что действие завершилось.
+      notify({ title: isNew ? "Фильм создан" : "Сохранено", kind: "success" });
+      nav("/admin/movies");
+    } catch (e: any) {
+      setErr(e.message);
+      setSaving(false);
+    }
   }
 
   async function remove() {
@@ -207,6 +217,7 @@ export default function MovieAdmin() {
 
   return (
     <div>
+      {saving && <ProjectorLoader text={isNew ? "Создаём фильм" : "Сохраняем"} />}
       <button className="ghost" onClick={() => nav("/admin/movies")} style={{ marginTop: 12 }}>← К списку</button>
       {err && <div className="error" style={{ marginTop: 12 }}>{err}</div>}
       {info && <div className="hint-box" style={{ marginTop: 12 }}>{info}</div>}
@@ -407,7 +418,10 @@ export default function MovieAdmin() {
             <label>Описание</label>
             <textarea rows={4} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
           </div>
-          <button className="primary" type="submit">{isNew ? "Создать фильм" : "Сохранить"}</button>
+          <button className="primary" type="submit" disabled={saving}>
+            {saving && <Spinner />}
+            {saving ? (isNew ? "Создаём..." : "Сохраняем...") : (isNew ? "Создать фильм" : "Сохранить")}
+          </button>
 
           {!isNew && (
             <div style={{ marginTop: 32 }}>
@@ -435,6 +449,7 @@ export default function MovieAdmin() {
                   onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadStill(f); }}
                 />
                 <button type="button" onClick={() => stillFileRef.current?.click()} disabled={stillBusy}>
+                  {stillBusy && <Spinner />}
                   {stillBusy ? "Загрузка..." : "Загрузить файл"}
                 </button>
                 <span className="muted" style={{ fontSize: 12 }}>или</span>

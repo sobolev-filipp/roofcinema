@@ -5,6 +5,7 @@ import { useAuth } from "../auth";
 import AdminTemplateCopyBox from "../components/AdminTemplateCopyBox";
 import BalancePaymentBox from "../components/BalancePaymentBox";
 import BookingAttendeesBox from "../components/BookingAttendeesBox";
+import { Skeleton } from "../components/Loaders";
 import ReceiptUploadBox from "../components/ReceiptUploadBox";
 import { STATUS_COLOR, STATUS_LABELS, formatCountdown, msUntil, parseUtc } from "../lib/bookingStatus";
 import { useUI } from "../ui";
@@ -45,7 +46,13 @@ export default function BookingPage() {
   }, []);
 
   if (err) return <div className="container"><div className="error">{err}</div></div>;
-  if (!booking) return <div className="container"><div className="empty">Загрузка...</div></div>;
+  if (!booking) return (
+    <div className="container">
+      <Skeleton variant="title" />
+      <Skeleton variant="card" />
+      <Skeleton variant="row" count={3} />
+    </div>
+  );
 
   const info = booking.screening_info!;
   const remainingMs = msUntil(booking.expires_at);

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
+import { Spinner } from "../components/Loaders";
 import PinInput from "../components/PinInput";
 
 export default function VerifyEmailPage() {
@@ -90,6 +91,7 @@ export default function VerifyEmailPage() {
           disabled={busy || code.length !== 6}
           onClick={() => submit(code)}
         >
+          {busy && <Spinner />}
           {busy ? "Проверяем..." : "Подтвердить"}
         </button>
 

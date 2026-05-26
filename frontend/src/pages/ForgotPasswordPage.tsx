@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api";
+import { Spinner } from "../components/Loaders";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
@@ -31,6 +32,7 @@ export default function ForgotPasswordPage() {
               <input type="email" required autoFocus value={email} onChange={(e) => setEmail(e.target.value)} />
             </div>
             <button className="primary btn-block" type="submit" disabled={busy}>
+              {busy && <Spinner />}
               {busy ? "Отправляем..." : "Отправить ссылку"}
             </button>
           </>

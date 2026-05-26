@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { api, type Booking } from "../api";
 import { useUI } from "../ui";
+import { Spinner } from "./Loaders";
 
 type Props = {
   booking: Booking;
@@ -129,7 +130,8 @@ export default function BookingAttendeesBox({ booking, onChange }: Props) {
             </div>
             <div className="row gap">
               <button type="submit" className="primary" disabled={busy}>
-                {busy ? "..." : "Отправить"}
+                {busy && <Spinner />}
+                {busy ? "Отправляем..." : "Отправить"}
               </button>
               <button type="button" className="ghost" onClick={() => setShowForm(false)} disabled={busy}>
                 Отмена

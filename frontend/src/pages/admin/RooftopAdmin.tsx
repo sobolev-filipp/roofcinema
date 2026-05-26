@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api, type City, type Rooftop, type SeatType } from "../../api";
 import Autocomplete from "../../components/Autocomplete";
+import { Skeleton } from "../../components/Loaders";
 import { useUI } from "../../ui";
 
 type AddressSuggestion = { address: string; lat: number; lng: number; display: string; full_display: string };
@@ -140,7 +141,13 @@ export default function RooftopAdmin() {
     } catch (e: any) { setErr(e.message); }
   }
 
-  if (!rooftop) return <div className="empty">Загрузка...</div>;
+  if (!rooftop) return (
+    <div style={{ marginTop: 16 }}>
+      <Skeleton variant="title" />
+      <Skeleton variant="card" />
+      <Skeleton variant="row" count={2} />
+    </div>
+  );
   const city = cities.find((c) => c.id === rooftop.city_id);
 
   return (

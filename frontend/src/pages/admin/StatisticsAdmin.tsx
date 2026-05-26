@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../../api";
+import { Skeleton } from "../../components/Loaders";
 
 type Period = "month" | "week";
 
@@ -207,7 +208,9 @@ export default function StatisticsAdmin() {
           </div>
 
           {loading ? (
-            <div className="empty" style={{ marginTop: 16 }}>Загрузка...</div>
+            <div style={{ marginTop: 16 }}>
+              <Skeleton variant="card" count={1} height={240} />
+            </div>
           ) : (
             <div className="bar-chart" style={{ marginTop: 16 }}>
               {data.buckets.map((b) => {

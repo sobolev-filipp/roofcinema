@@ -5,6 +5,7 @@ import {
   type MessageTemplateKind,
   TEMPLATE_KIND_LABELS,
 } from "../../api";
+import { Skeleton } from "../../components/Loaders";
 import { useUI } from "../../ui";
 
 const KIND_ORDER: MessageTemplateKind[] = [
@@ -34,7 +35,7 @@ const PLACEHOLDER_HINTS: Record<string, string> = {
   "{qr_image_link}": "Прямая ссылка на картинку QR-кода",
   "{payout_details}": "Реквизиты для оплаты из настроек показа (получатель, номер карты, телефон СБП, банк) — каждый реквизит на отдельной строке",
   "{items}": "Список забронированных мест — тип × количество и сумма, каждая позиция на отдельной строке",
-  "{seat_types}": "Список доступных типов мест на выбранном показе — название, цена и сколько осталось. Каждый тип на отдельной строке. Подставляется при копировании из раздела «+ Бронь вручную».",
+  "{seat_types}": "Список доступных типов мест на выбранном показе — название и цена (без остатка). Каждый тип на отдельной строке. Подставляется при копировании из раздела «+ Бронь вручную».",
 };
 
 const KIND_HINTS: Record<MessageTemplateKind, string> = {
@@ -162,7 +163,7 @@ export default function MessageTemplatesAdmin() {
       reason: "Дождь — показ перенесён",
       payout_details: "Получатель: ИП Крышников А.В.\nКарта: 2200 1234 5678 9012\nТелефон (СБП): +7 999 123-45-67\nБанк: Сбербанк",
       items: "Стандарт ×2 — 3 000 ₽\nVIP ×1 — 2 500 ₽",
-      seat_types: "- Стандарт — 1 500 ₽ (осталось 5 из 10)\n- VIP — 2 500 ₽ (осталось 2 из 4, по 2 гостя на место)",
+      seat_types: "- Стандарт — 1 500 ₽\n- VIP — 2 500 ₽",
     };
     try {
       const res = await api.post<{ rendered: string }>("/api/admin/message-templates/preview", {
@@ -273,7 +274,7 @@ export default function MessageTemplatesAdmin() {
 
       <h3>Существующие шаблоны</h3>
       {loading ? (
-        <div className="empty">Загрузка...</div>
+        <Skeleton variant="row" count={3} />
       ) : items.length === 0 ? (
         <div className="empty">Шаблонов этого типа ещё нет. Добавьте первый.</div>
       ) : (

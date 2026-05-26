@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api, type City, type Movie, type Screening } from "../api";
 import BookingForm from "../components/BookingForm";
+import { Skeleton } from "../components/Loaders";
 import Rating from "../components/Rating";
 import ScreeningBookingStatus, { getBookingStatus } from "../components/ScreeningBookingStatus";
 import { toEmbedUrl } from "../lib/embed";
@@ -41,7 +42,13 @@ export default function MoviePage() {
     api.get<Screening[]>(`/api/screenings?movie_id=${id}`).then(setScreenings);
   }, [id]);
 
-  if (!movie) return <div className="container"><div className="empty">Загрузка...</div></div>;
+  if (!movie) return (
+    <div className="container">
+      <Skeleton variant="title" />
+      <Skeleton variant="card" />
+      <Skeleton variant="text" count={4} />
+    </div>
+  );
 
   const trailer = toEmbedUrl(movie.trailer_url);
 

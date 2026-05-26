@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, type Booking, type Screening } from "../api";
 import { useAuth } from "../auth";
+import { Spinner } from "./Loaders";
 
 type Qty = Record<number, number>;  // sst.id -> qty
 
@@ -161,6 +162,7 @@ export default function BookingForm({ screening, onCancel }: Props) {
           <div className="row gap" style={{ marginTop: 16, justifyContent: "flex-end" }}>
             <button type="button" className="ghost" onClick={onCancel}>Отмена</button>
             <button type="submit" className="primary" disabled={busy || totalSeats === 0 || !consent}>
+              {busy && <Spinner />}
               {busy ? "Бронируем..." : `Забронировать на ${total.toFixed(0)} ₽`}
             </button>
           </div>

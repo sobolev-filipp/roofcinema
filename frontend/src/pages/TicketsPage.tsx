@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type Booking } from "../api";
+import { Skeleton } from "../components/Loaders";
 import TicketCard from "../components/TicketCard";
 
 const PAID_STATUSES = new Set(["paid", "paid_by_balance", "attended", "no_show"]);
@@ -48,7 +49,7 @@ export default function TicketsPage() {
       </div>
 
       {loading ? (
-        <div className="empty" style={{ marginTop: 16 }}>Загрузка...</div>
+        <div style={{ marginTop: 16 }}><Skeleton variant="card" count={2} /></div>
       ) : list.length === 0 ? (
         <div className="empty" style={{ marginTop: 16 }}>
           {tab === "active" ? (

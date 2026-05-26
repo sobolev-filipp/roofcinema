@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type RefundRequest, type RefundRequestStatus } from "../../api";
+import { Skeleton } from "../../components/Loaders";
 import { useUI } from "../../ui";
 
 type Tab = RefundRequestStatus;
@@ -132,7 +133,7 @@ export default function RefundsAdmin() {
       {err && <div className="error">{err}</div>}
 
       {loading ? (
-        <div className="empty">Загрузка...</div>
+        <Skeleton variant="row" count={4} />
       ) : items.length === 0 ? (
         <div className="empty">Нет запросов в этой вкладке.</div>
       ) : (

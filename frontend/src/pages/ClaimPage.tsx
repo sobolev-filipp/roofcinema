@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, ApiError, type ClaimInfo } from "../api";
 import { useAuth } from "../auth";
+import { Skeleton } from "../components/Loaders";
 
 const fmt = (iso: string) =>
   new Date(iso).toLocaleString("ru-RU", { dateStyle: "long", timeStyle: "short" });
@@ -56,7 +57,12 @@ export default function ClaimPage() {
     );
   }
   if (!info) {
-    return <div className="container"><div className="empty">Загрузка...</div></div>;
+    return (
+      <div className="container">
+        <Skeleton variant="title" />
+        <Skeleton variant="card" />
+      </div>
+    );
   }
 
   const isMine = info.claimed_by_user_id != null && user != null && info.claimed_by_user_id === user.id;

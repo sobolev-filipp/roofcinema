@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type Booking, type Screening } from "../../api";
+import { Skeleton } from "../../components/Loaders";
 import { STATUS_COLOR, STATUS_LABELS, formatCountdown, msUntil } from "../../lib/bookingStatus";
 import { useBookingsWs } from "../../lib/useBookingsWs";
 import { useUI } from "../../ui";
@@ -343,7 +344,9 @@ export default function BookingsAdmin() {
           </div>
 
           {loading ? (
-            <div className="empty" style={{ marginTop: 12 }}>Загрузка...</div>
+            <div style={{ marginTop: 12 }}>
+              <Skeleton variant="row" count={4} />
+            </div>
           ) : bookings.length === 0 ? (
             <div className="empty" style={{ marginTop: 12 }}>
               {tab === "active" ? "Активных броней нет." : "Завершённых броней нет."}

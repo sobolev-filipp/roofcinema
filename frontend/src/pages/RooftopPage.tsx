@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api, type RooftopPublic, type Screening } from "../api";
 import LeafletMap from "../components/LeafletMap";
+import { Skeleton } from "../components/Loaders";
 
 const fmt = (iso: string) =>
   new Date(iso).toLocaleString("ru-RU", { dateStyle: "long", timeStyle: "short" });
@@ -18,7 +19,13 @@ export default function RooftopPage() {
     api.get<Screening[]>(`/api/screenings?rooftop_id=${id}&date_from=${nowIso}`).then(setScreenings);
   }, [id]);
 
-  if (!rooftop) return <div className="container"><div className="empty">Загрузка...</div></div>;
+  if (!rooftop) return (
+    <div className="container">
+      <Skeleton variant="title" />
+      <Skeleton variant="card" />
+      <Skeleton variant="row" count={2} />
+    </div>
+  );
 
   const mapLat = rooftop.approx_lat;
   const mapLng = rooftop.approx_lng;

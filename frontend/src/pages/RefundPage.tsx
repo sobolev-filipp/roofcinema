@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api, type RefundClaim } from "../api";
+import { Skeleton, Spinner } from "../components/Loaders";
 import { useUI } from "../ui";
 
 const fmt = (iso: string) =>
@@ -63,7 +64,12 @@ export default function RefundPage() {
       </div>
     );
   }
-  if (!info) return <div className="container"><div className="empty">Загрузка...</div></div>;
+  if (!info) return (
+    <div className="container">
+      <Skeleton variant="title" />
+      <Skeleton variant="card" />
+    </div>
+  );
 
   return (
     <div className="container" style={{ maxWidth: 560 }}>
@@ -122,6 +128,7 @@ export default function RefundPage() {
               />
             </div>
             <button type="submit" className="primary" disabled={busy} style={{ width: "100%" }}>
+              {busy && <Spinner />}
               {busy ? "Отправляем..." : info.status === "filled" ? "Обновить реквизиты" : "Отправить реквизиты"}
             </button>
           </form>

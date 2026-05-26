@@ -4,6 +4,7 @@ import { api, type City, type Screening } from "../api";
 import { useAuth } from "../auth";
 import CitySelector from "../components/CitySelector";
 import DateFilter, { defaultRange, rangeBounds, toNaiveIso, type DateRange } from "../components/DateFilter";
+import { Skeleton } from "../components/Loaders";
 
 const TIME_RU = (iso: string) => {
   const d = new Date(iso);
@@ -87,7 +88,9 @@ export default function HomePage() {
       <h1 style={{ marginTop: 24 }}>Афиша</h1>
 
       {loading ? (
-        <div className="empty">Загрузка...</div>
+        <div style={{ marginTop: 16 }}>
+          <Skeleton variant="card" count={3} />
+        </div>
       ) : grouped.length === 0 ? (
         <div className="empty">
           На выбранный период показов нет. Попробуйте другую дату или город.

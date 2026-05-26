@@ -8,6 +8,7 @@ import {
   type Screening,
   type UserSearchHit,
 } from "../../api";
+import { Spinner } from "../../components/Loaders";
 import { useDebouncedValue } from "../../lib/hooks";
 import { useUI } from "../../ui";
 
@@ -149,20 +150,15 @@ export default function ManualBookingAdmin() {
   }
 
   /** Собирает список доступных типов мест для подстановки в шаблон.
-   *  Каждая позиция на отдельной строке, формат: «- Название — цена ₽ (осталось N из M)».
-   *  Скрываем типы, где count=0 — их в показе фактически нет. */
+   *  Только название + цена, без остатка (чтобы не светить пользователю
+   *  внутреннюю занятость). Каждая позиция на отдельной строке. */
   function buildSeatTypesText(): string {
     if (!screening) return "";
     return screening.seats
       .filter((sst) => Number(sst.count) > 0)
       .map((sst) => {
         const price = Number(sst.price).toLocaleString("ru-RU");
-        const total = Number(sst.count);
-        const left = Math.max(0, Number(sst.seats_available ?? sst.count));
-        const cap = Number(sst.capacity ?? 1);
-        const capNote = cap > 1 ? `, по ${cap} ${cap < 5 ? "гостя" : "гостей"} на место` : "";
-        const leftNote = left === 0 ? "мест нет" : `осталось ${left} из ${total}`;
-        return `- ${sst.name} — ${price} ₽ (${leftNote}${capNote})`;
+        return `- ${sst.name} — ${price} ₽`;
       })
       .join("\n");
   }
@@ -503,6 +499,7 @@ export default function ManualBookingAdmin() {
             <div className="row gap" style={{ marginTop: 16, justifyContent: "flex-end" }}>
               <button className="ghost" onClick={resetAll} disabled={busy}>Очистить</button>
               <button className="primary" onClick={submit} disabled={busy || totalSeats === 0}>
+                {busy && <Spinner />}
                 {busy ? "Создание..." : `Создать бронь на ${totalAmount.toFixed(0)} ₽`}
               </button>
             </div>

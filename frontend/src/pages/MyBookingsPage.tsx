@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type Booking } from "../api";
+import { Skeleton } from "../components/Loaders";
 import { STATUS_COLOR, STATUS_LABELS, formatCountdown, msUntil } from "../lib/bookingStatus";
 
 const fmt = (iso: string) =>
@@ -28,7 +29,11 @@ export default function MyBookingsPage() {
     <div className="container" style={{ maxWidth: 860 }}>
       <h1>Мои бронирования</h1>
 
-      {loading && <div className="empty">Загрузка...</div>}
+      {loading && (
+        <div className="bookings-list" style={{ marginTop: 16 }}>
+          <Skeleton variant="card" count={3} />
+        </div>
+      )}
 
       {waitingPayment.length > 0 && (
         <>

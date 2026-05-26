@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api";
+import { Spinner } from "../components/Loaders";
 
 export default function ResetPasswordPage() {
   const [params] = useSearchParams();
@@ -45,6 +46,7 @@ export default function ResetPasswordPage() {
               <input type="password" required minLength={6} value={pw2} onChange={(e) => setPw2(e.target.value)} />
             </div>
             <button className="primary btn-block" type="submit" disabled={busy}>
+              {busy && <Spinner />}
               {busy ? "Сохраняем..." : "Сохранить"}
             </button>
           </>

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
+import { Spinner } from "../components/Loaders";
 
 export default function InitialSetupPage() {
   const { user, refresh } = useAuth();
@@ -59,6 +60,7 @@ export default function InitialSetupPage() {
           <input type="password" required minLength={6} value={pw2} onChange={(e) => setPw2(e.target.value)} />
         </div>
         <button className="primary btn-block" type="submit" disabled={busy}>
+          {busy && <Spinner />}
           {busy ? "Сохраняем..." : "Сохранить и подтвердить email"}
         </button>
         <p className="muted" style={{ fontSize: 12, marginTop: 12 }}>

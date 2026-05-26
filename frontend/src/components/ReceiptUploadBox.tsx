@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { getToken, type Booking, type PaymentReceipt } from "../api";
+import { Spinner } from "./Loaders";
 
 type Props = {
   booking: Booking;
@@ -98,6 +99,7 @@ export default function ReceiptUploadBox({ booking, onUploaded }: Props) {
         <div className="upload-controls">
           <input ref={ref} type="file" accept="image/*,application/pdf" onChange={onFile} hidden />
           <button type="button" className="primary" onClick={() => ref.current?.click()} disabled={busy}>
+            {busy && <Spinner />}
             {busy ? "Загрузка..." : (rejected ? "Загрузить новый чек" : "Загрузить чек об оплате")}
           </button>
           <span className="muted" style={{ fontSize: 12 }}>

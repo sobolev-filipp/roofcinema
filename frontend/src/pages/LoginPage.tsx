@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import PinInput from "../components/PinInput";
+import { Spinner } from "../components/Loaders";
 
 type Step = "credentials" | "code";
 
@@ -178,6 +179,7 @@ export default function LoginPage() {
             disabled={busy || code.length < 6 || expired}
             style={{ width: "100%", marginTop: 16 }}
           >
+            {busy && <Spinner />}
             {busy ? "Проверяем..." : "Войти"}
           </button>
 
@@ -226,6 +228,7 @@ export default function LoginPage() {
           />
         </div>
         <button className="primary" type="submit" disabled={busy} style={{ width: "100%" }}>
+          {busy && <Spinner />}
           {busy ? "Проверяем..." : "Продолжить →"}
         </button>
         <div className="auth-switch">

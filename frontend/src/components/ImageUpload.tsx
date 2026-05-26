@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { api, getToken } from "../api";
+import { Spinner } from "./Loaders";
 
 type Props = {
   value: string;
@@ -52,6 +53,7 @@ export default function ImageUpload({ value, onChange, hideUrlInput = false, but
       <div className="upload-controls">
         <input ref={ref} type="file" accept="image/*" onChange={onFile} hidden />
         <button type="button" onClick={() => ref.current?.click()} disabled={busy}>
+          {busy && <Spinner />}
           {busy ? "Загрузка..." : buttonLabel}
         </button>
         {value && !hideUrlInput && (

@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { useAuth } from "../auth";
+import { useTheme } from "../theme";
 
 const ROLE_LABEL: Record<string, string> = {
   super_admin: "Владелец",
@@ -9,6 +10,7 @@ const ROLE_LABEL: Record<string, string> = {
 
 export default function ProfilePage() {
   const { user } = useAuth();
+  const { theme, setTheme } = useTheme();
   if (!user) return null;
 
   const initials = (user.full_name || user.email)
@@ -89,6 +91,32 @@ export default function ProfilePage() {
           </div>
           <span className="pl-arrow">→</span>
         </Link>
+
+        {/* Внешний вид — переключатель темы */}
+        <div className="profile-link-card card" style={{ cursor: "default" }}>
+          <div style={{ flex: 1 }}>
+            <div className="pl-title">Внешний вид</div>
+            <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>
+              Цветовая тема приложения
+            </div>
+            <div className="seg" style={{ maxWidth: 320 }}>
+              <button
+                type="button"
+                className={theme === "dark" ? "active" : ""}
+                onClick={() => setTheme("dark")}
+              >
+                🌙 Тёмная
+              </button>
+              <button
+                type="button"
+                className={theme === "light" ? "active" : ""}
+                onClick={() => setTheme("light")}
+              >
+                ☀ Светлая
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
