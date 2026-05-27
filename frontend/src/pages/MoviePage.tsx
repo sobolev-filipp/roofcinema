@@ -6,6 +6,7 @@ import { Skeleton } from "../components/Loaders";
 import Rating from "../components/Rating";
 import ScreeningBookingStatus, { getBookingStatus } from "../components/ScreeningBookingStatus";
 import { toEmbedUrl } from "../lib/embed";
+import { formatEndsAt } from "../lib/screening";
 
 let _citiesCache: Promise<City[]> | null = null;
 function loadCities() {
@@ -88,6 +89,18 @@ export default function MoviePage() {
                     <div className="row between" style={{ flexWrap: "wrap", gap: 10 }}>
                       <div style={{ minWidth: 0 }}>
                         <div style={{ fontSize: 15, fontWeight: 600 }}>{fmt(s.starts_at)}</div>
+                        {(() => {
+                          const ends = formatEndsAt({
+                            starts_at: s.starts_at,
+                            ends_at: s.ends_at,
+                            duration_min: s.movie?.duration_min,
+                          });
+                          return ends ? (
+                            <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
+                              окончание ≈ {ends}
+                            </div>
+                          ) : null;
+                        })()}
                         <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>
                           <CityForRooftop rooftopId={s.rooftop.id} cityId={s.rooftop.city_id} />
                           {" · "}

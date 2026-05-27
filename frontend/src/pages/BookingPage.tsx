@@ -8,6 +8,7 @@ import BookingAttendeesBox from "../components/BookingAttendeesBox";
 import { Skeleton } from "../components/Loaders";
 import ReceiptUploadBox from "../components/ReceiptUploadBox";
 import { STATUS_COLOR, STATUS_LABELS, formatCountdown, msUntil, parseUtc } from "../lib/bookingStatus";
+import { formatEndsAt } from "../lib/screening";
 import { useUI } from "../ui";
 
 const fmt = (iso: string) =>
@@ -99,6 +100,22 @@ export default function BookingPage() {
     finally { setBusy(false); }
   }
 
+  async function togglePostShowReceipt() {
+    if (!booking) return;
+    setBusy(true);
+    try {
+      const next = !booking.needs_post_show_receipt;
+      const b = await api.patch<Booking>(
+        `/api/bookings/${id}/post-show-receipt-preference?needs=${next}`,
+      );
+      setBooking(b);
+    } catch (e: any) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function applyBalance(amount: number) {
     setBusy(true);
     try {
@@ -122,6 +139,18 @@ export default function BookingPage() {
             <div style={{ minWidth: 0 }}>
               <h1 style={{ margin: 0, fontSize: 22 }}>{info.movie_title}</h1>
               <div className="muted" style={{ marginTop: 6 }}>{fmt(info.starts_at)}</div>
+              {(() => {
+                const ends = formatEndsAt({
+                  starts_at: info.starts_at,
+                  ends_at: info.ends_at,
+                  duration_min: info.movie_duration_min,
+                });
+                return ends ? (
+                  <div className="muted" style={{ fontSize: 13, marginTop: 2 }}>
+                    окончание ≈ {ends}
+                  </div>
+                ) : null;
+              })()}
               <div className="muted" style={{ fontSize: 14, marginTop: 4 }}>
                 {info.city_name} · <Link to={`/rooftops/${info.rooftop_id}`} className="rooftop-link">{info.rooftop_name}</Link>
               </div>
@@ -223,6 +252,49 @@ export default function BookingPage() {
           <span>Итого</span>
           <span>{Number(booking.total_amount).toFixed(0)} ₽</span>
         </div>
+      </div>
+
+      {/* Карточка «Чек после показа» — toggle для пользователя или админа */}
+      <div className="card" style={{ marginTop: 12 }}>
+        <div className="row between" style={{ gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <h3 style={{ margin: 0 }}>Чек об оплате</h3>
+            {booking.post_show_receipt?.sent_at ? (
+              <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>
+                ✓ Чек отправлен на {booking.email}{" "}
+                <span style={{ fontSize: 12 }}>
+                  ({new Date(booking.post_show_receipt.sent_at).toLocaleString("ru-RU")})
+                </span>
+              </div>
+            ) : booking.needs_post_show_receipt ? (
+              <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>
+                Запрошен. Чек придёт на {booking.email} <b>после показа</b>.
+              </div>
+            ) : (
+              <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>
+                Не нужен. Если передумаете — включите чек, и мы пришлём его на email после показа.
+              </div>
+            )}
+          </div>
+          {!booking.post_show_receipt?.sent_at && (
+            <button
+              type="button"
+              className={booking.needs_post_show_receipt ? "ghost" : "primary"}
+              onClick={togglePostShowReceipt}
+              disabled={busy}
+            >
+              {booking.needs_post_show_receipt ? "Не нужен" : "Нужен чек"}
+            </button>
+          )}
+        </div>
+        {isAdmin && booking.post_show_receipt?.file_url && (
+          <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+            Файл чека:{" "}
+            <a href={booking.post_show_receipt.file_url} target="_blank" rel="noopener" className="rooftop-link">
+              открыть
+            </a>
+          </div>
+        )}
       </div>
 
       {isWaiting && (

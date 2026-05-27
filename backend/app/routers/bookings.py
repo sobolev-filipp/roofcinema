@@ -124,11 +124,17 @@ def _to_out(b: Booking) -> BookingOut:
     info = None
     if s is not None:
         reveal_address = b.status in _REVEALS_ADDRESS
+        # Окончание показа: явный ends_at → starts_at + duration_min → None
+        ends_at = s.ends_at
+        if ends_at is None and s.movie and s.movie.duration_min:
+            ends_at = s.starts_at + timedelta(minutes=int(s.movie.duration_min))
         info = BookingScreeningInfo(
             id=s.id,
             starts_at=s.starts_at,
+            ends_at=ends_at,
             movie_id=s.movie_id,
             movie_title=s.movie.title if s.movie else "",
+            movie_duration_min=(s.movie.duration_min if s.movie else None),
             movie_poster_url=(s.movie.poster_url if s.movie else None),
             rooftop_id=s.rooftop_id,
             rooftop_name=s.rooftop.name if s.rooftop else "",
@@ -152,6 +158,9 @@ def _to_out(b: Booking) -> BookingOut:
         a_out.claim_url = f"/claim/{a.claim_token}"
     if b.refund_request:
         out.refund_request = RefundBasicOut.model_validate(b.refund_request, from_attributes=True)
+    if b.post_show_receipt:
+        from ..schemas import PostShowReceiptOut
+        out.post_show_receipt = PostShowReceiptOut.model_validate(b.post_show_receipt, from_attributes=True)
     return out
 
 
@@ -321,6 +330,7 @@ def create_booking(
         qr_token=secrets.token_urlsafe(32),
         short_code=_gen_short_code(db),
         note=payload.note,
+        needs_post_show_receipt=payload.needs_post_show_receipt,
     )
     db.add(booking)
     db.flush()
@@ -535,6 +545,30 @@ def transfer_booking(
     db.commit()
     _broadcast(old_screening_id, "updated", b.id)
     _broadcast(target.id, "updated", b.id)
+    return _to_out(db.query(Booking).options(*_eager()).filter(Booking.id == b.id).first())
+
+
+@router.patch("/{booking_id}/post-show-receipt-preference", response_model=BookingOut)
+def set_post_show_receipt_preference(
+    booking_id: int,
+    needs: bool,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Меняет флаг «нужен чек после показа». Доступно владельцу брони или администратору
+    с правом manage_bookings."""
+    b = db.query(Booking).options(*_eager()).filter(Booking.id == booking_id).first()
+    if not b:
+        raise HTTPException(status_code=404, detail="Бронь не найдена")
+    is_owner = b.user_id == user.id
+    is_admin = (
+        user.role == UserRole.super_admin.value
+        or (user.role == UserRole.admin.value and (user.permissions is None or "manage_bookings" in user.permissions))
+    )
+    if not is_owner and not is_admin:
+        raise HTTPException(status_code=403, detail="Нет доступа к этой брони")
+    b.needs_post_show_receipt = needs
+    db.commit()
     return _to_out(db.query(Booking).options(*_eager()).filter(Booking.id == b.id).first())
 
 

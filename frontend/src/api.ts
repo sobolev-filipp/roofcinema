@@ -162,6 +162,7 @@ export type MessageTemplateKind =
   | "manual_booking"
   | "pre_booking_info"
   | "post_payment"
+  | "post_show_receipt"
   | "user_cancel_notice"
   | "admin_cancel_screening"
   | "refund_link"
@@ -181,6 +182,7 @@ export const TEMPLATE_KIND_LABELS: Record<MessageTemplateKind, string> = {
   manual_booking: "Ручное бронирование (до оплаты)",
   pre_booking_info: "Запрос данных у пользователя",
   post_payment: "После оплаты (с QR-кодом)",
+  post_show_receipt: "Чек после показа (с вложением)",
   user_cancel_notice: "Отмена брони (письмо пользователю)",
   admin_cancel_screening: "Отмена показа целиком",
   refund_link: "Возврат средств — ссылка на форму",
@@ -251,6 +253,7 @@ export type Screening = {
   movie_id: number;
   rooftop_id: number;
   starts_at: string;
+  ends_at: string | null;
   booking_window_minutes: number;
   booking_opens_at: string | null;
   booking_closes_at: string | null;
@@ -279,8 +282,11 @@ export type BookingItem = {
 export type BookingScreeningInfo = {
   id: number;
   starts_at: string;
+  /** Вычислено в роутере: явный ends_at или starts_at + movie.duration_min. */
+  ends_at: string | null;
   movie_id: number;
   movie_title: string;
+  movie_duration_min: number | null;
   movie_poster_url: string | null;
   rooftop_id: number;
   rooftop_name: string;
@@ -396,6 +402,13 @@ export type CheckInConfirmOut = {
   already_attended: boolean;
 };
 
+export type PostShowReceiptInfo = {
+  id: number;
+  file_url: string;
+  sent_at: string | null;
+  created_at: string;
+};
+
 export type Booking = {
   id: number;
   user_id: number | null;
@@ -411,6 +424,7 @@ export type Booking = {
   qr_token: string;
   short_code: string;
   note: string | null;
+  needs_post_show_receipt: boolean;
   created_at: string;
   paid_at: string | null;
   attended_at: string | null;
@@ -422,4 +436,5 @@ export type Booking = {
   attendees: BookingAttendee[];
   total_guests: number;
   refund_request: RefundBasic | null;
+  post_show_receipt: PostShowReceiptInfo | null;
 };

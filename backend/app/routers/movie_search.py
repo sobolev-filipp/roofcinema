@@ -5,6 +5,7 @@
 и предложит «заполнить вручную»."""
 from __future__ import annotations
 
+import re
 import time
 from typing import Any
 
@@ -25,6 +26,26 @@ KP_FILM_URL = "https://kinopoiskapiunofficial.tech/api/v2.2/films"
 UA = "RoofCinema/0.1"
 TTL_SEC = 600
 _cache: dict[str, tuple[float, Any]] = {}
+
+
+def _normalize_age_rating(raw: str | None) -> str | None:
+    """Приводит к российскому формату «N+».
+    Kinopoisk возвращает «age12», «age16», «age0» — переделываем в «12+», «16+», «0+».
+    Если уже в виде «12+» / просто «12» / «PG-13» — возвращаем как есть.
+    None / пустая → None."""
+    if not raw:
+        return None
+    s = str(raw).strip()
+    if not s:
+        return None
+    # «age12» → «12+»
+    m = re.fullmatch(r"age\s*(\d+)", s, flags=re.IGNORECASE)
+    if m:
+        return f"{m.group(1)}+"
+    # Просто число «12» → «12+»
+    if re.fullmatch(r"\d+", s):
+        return f"{s}+"
+    return s
 
 
 def _cache_get(key: str):
@@ -67,7 +88,7 @@ def _search_omdb(q: str, api_key: str) -> list[dict[str, Any]]:
                     "description": d.get("Plot") if d.get("Plot") and d.get("Plot") != "N/A" else None,
                     "director": d.get("Director") if d.get("Director") and d.get("Director") != "N/A" else None,
                     "genres": d.get("Genre") if d.get("Genre") and d.get("Genre") != "N/A" else None,
-                    "age_rating": d.get("Rated") if d.get("Rated") and d.get("Rated") != "N/A" else None,
+                    "age_rating": _normalize_age_rating(d.get("Rated") if d.get("Rated") and d.get("Rated") != "N/A" else None),
                     "duration_min": runtime,
                     "imdb_id": imdb_id,
                     "imdb_rating": rating,
@@ -110,7 +131,7 @@ def _search_kinopoisk(q: str, api_key: str) -> list[dict[str, Any]]:
                     "description": d.get("description"),
                     "director": None,
                     "genres": genres,
-                    "age_rating": d.get("ratingAgeLimits") or None,
+                    "age_rating": _normalize_age_rating(d.get("ratingAgeLimits")),
                     "duration_min": d.get("filmLength"),
                     "imdb_id": d.get("imdbId"),
                     "imdb_rating": imdb_rating,

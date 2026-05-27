@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type Booking, type MessageTemplate, type MessageTemplateKind, type Screening } from "../api";
+import { formatEndsAt } from "../lib/screening";
 import { useUI } from "../ui";
 
 /** Форматирование «локального наивного» времени (например, starts_at — оно уже хранится
@@ -101,10 +102,19 @@ export default function AdminTemplateCopyBox({ booking }: Props) {
       return;
     }
     const tz = info!.city_timezone || "Europe/Moscow";
+    const endsAtText = formatEndsAt(
+      {
+        starts_at: info!.starts_at,
+        ends_at: info!.ends_at,
+        duration_min: info!.movie_duration_min,
+      },
+      true,
+    ) ?? "";
     const ctx: Record<string, string> = {
       full_name: booking.full_name,
       movie: info!.movie_title,
       starts_at: fmtNaiveLocal(info!.starts_at),
+      ends_at: endsAtText,
       rooftop: info!.rooftop_name,
       city: info!.city_name,
       rooftop_address: info!.rooftop_address ?? "(адрес будет в сообщении после оплаты)",

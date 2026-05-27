@@ -80,7 +80,8 @@ RU_TZ_VALUES = {tz["value"] for tz in RU_TIMEZONES}
 # (валидация/документация), и frontend'ом (показ кликабельных бейджей).
 TEMPLATE_PLACEHOLDERS: dict[str, list[str]] = {
     "manual_booking": [
-        "{full_name}", "{movie}", "{starts_at}", "{rooftop}", "{rooftop_address}", "{city}",
+        "{full_name}", "{movie}", "{starts_at}", "{ends_at}",
+        "{rooftop}", "{rooftop_address}", "{city}",
         "{amount}", "{expires_at}", "{booking_link}", "{claim_link}",
         "{payout_details}", "{items}",
     ],
@@ -90,8 +91,14 @@ TEMPLATE_PLACEHOLDERS: dict[str, list[str]] = {
         "{movie}", "{starts_at}", "{rooftop}", "{city}", "{seat_types}",
     ],
     "post_payment": [
-        "{full_name}", "{movie}", "{starts_at}", "{rooftop}", "{city}",
+        "{full_name}", "{movie}", "{starts_at}", "{ends_at}",
+        "{rooftop}", "{city}",
         "{rooftop_address}", "{short_code}", "{qr_image_link}", "{items}",
+    ],
+    "post_show_receipt": [
+        # Сопровождение чека после показа — текст письма, к которому прикладывается файл.
+        "{full_name}", "{movie}", "{starts_at}", "{rooftop}", "{city}",
+        "{items}", "{amount}",
     ],
     "user_cancel_notice": [
         "{full_name}", "{movie}", "{starts_at}", "{rooftop}", "{reason}",

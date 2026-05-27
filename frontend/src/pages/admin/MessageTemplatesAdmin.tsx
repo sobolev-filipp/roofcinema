@@ -12,6 +12,7 @@ const KIND_ORDER: MessageTemplateKind[] = [
   "manual_booking",
   "pre_booking_info",
   "post_payment",
+  "post_show_receipt",
   "user_cancel_notice",
   "admin_cancel_screening",
   "refund_link",
@@ -22,6 +23,7 @@ const PLACEHOLDER_HINTS: Record<string, string> = {
   "{full_name}": "ФИО гостя",
   "{movie}": "Название фильма",
   "{starts_at}": "Дата и время начала показа",
+  "{ends_at}": "Дата и время окончания показа (начало + длительность фильма)",
   "{rooftop}": "Название крыши",
   "{rooftop_address}": "Точный адрес крыши",
   "{city}": "Город",
@@ -39,9 +41,10 @@ const PLACEHOLDER_HINTS: Record<string, string> = {
 };
 
 const KIND_HINTS: Record<MessageTemplateKind, string> = {
-  manual_booking: "Текст для отправки пользователю до оплаты. Используйте {expires_at} — дедлайн оплаты, {amount} — сумму, {booking_link} — ссылку на бронь, {rooftop_address} — адрес крыши, {payout_details} — реквизиты оплаты, {items} — список мест.",
+  manual_booking: "Текст для отправки пользователю до оплаты. Используйте {expires_at} — дедлайн оплаты, {amount} — сумму, {booking_link} — ссылку на бронь, {rooftop_address} — адрес крыши, {payout_details} — реквизиты оплаты, {items} — список мест, {ends_at} — окончание показа.",
   pre_booking_info: "Сообщение ПЕРЕД ручным бронированием — отправляется пользователю, чтобы он прислал ФИО, email, телефон. Кнопка копирования есть в разделе «+ Бронь вручную». Доступны данные показа: {movie}, {starts_at}, {rooftop}, {city}, {seat_types} — актуальный список доступных типов мест с ценами.",
-  post_payment: "Текст после подтверждения оплаты — с QR-кодом и числовым кодом входа. Используйте {short_code} — код входа, {qr_image_link} — ссылку на QR, {rooftop_address} — адрес, {items} — список мест.",
+  post_payment: "Текст после подтверждения оплаты — с QR-кодом и числовым кодом входа. Используйте {short_code} — код входа, {qr_image_link} — ссылку на QR, {rooftop_address} — адрес, {items} — список мест, {ends_at} — окончание показа.",
+  post_show_receipt: "Текст письма, к которому прикрепляется файл чека (отправляется после показа администратором). Доступны: {full_name}, {movie}, {starts_at}, {rooftop}, {city}, {items}, {amount}.",
   user_cancel_notice: "Письмо, которое уйдёт пользователю при отмене его брони.",
   admin_cancel_screening: "Уведомление всем гостям при отмене показа целиком.",
   refund_link: "Сопроводительный текст к ссылке на форму ввода реквизитов для возврата.",
@@ -152,6 +155,7 @@ export default function MessageTemplatesAdmin() {
       full_name: "Иван Петров",
       movie: "Криминальное чтиво",
       starts_at: "25.05.2026 21:00",
+      ends_at: "25.05.2026 23:34",
       expires_at: "25.05.2026 23:59",
       rooftop: "Лофт «Небо»",
       rooftop_address: "ул. Ленина, 10, подъезд 2, крыша",

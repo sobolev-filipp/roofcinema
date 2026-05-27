@@ -136,6 +136,7 @@ def create_screening(payload: ScreeningIn, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Крыша не найдена")
     data = payload.model_dump(exclude={"seat_allocations"})
     data["starts_at"] = _normalize_naive(payload.starts_at)
+    data["ends_at"] = _normalize_naive(payload.ends_at)
     data["booking_opens_at"] = _normalize_naive(payload.booking_opens_at)
     data["booking_closes_at"] = _normalize_naive(payload.booking_closes_at)
     screening = Screening(**data)
@@ -154,7 +155,7 @@ def update_screening(screening_id: int, payload: ScreeningUpdateIn, db: Session 
     if not screening:
         raise HTTPException(status_code=404, detail="Показ не найден")
     data = payload.model_dump(exclude_unset=True, exclude={"seat_allocations"})
-    for key in ("starts_at", "booking_opens_at", "booking_closes_at"):
+    for key in ("starts_at", "ends_at", "booking_opens_at", "booking_closes_at"):
         if key in data and data[key] is not None:
             data[key] = data[key].replace(tzinfo=None)
     for k, v in data.items():

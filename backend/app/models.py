@@ -252,6 +252,9 @@ class Screening(Base):
     movie_id: Mapped[int] = mapped_column(ForeignKey("movies.id", ondelete="CASCADE"), nullable=False, index=True)
     rooftop_id: Mapped[int] = mapped_column(ForeignKey("rooftops.id", ondelete="CASCADE"), nullable=False, index=True)
     starts_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+    # Локальное наивное время окончания показа в TZ крыши. Если null —
+    # фоновая задача оценит окончание как starts_at + 3ч (типовая длительность).
+    ends_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     booking_window_minutes: Mapped[int] = mapped_column(Integer, default=120, nullable=False)
     booking_opens_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
     booking_closes_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -328,6 +331,12 @@ class Booking(Base):
     short_code: Mapped[str] = mapped_column(String(12), unique=True, index=True, nullable=False)
 
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Пользователь / админ при создании отметил, что нужен чек после показа
+    # (для бухучёта). Админ потом загрузит файл и отправит на email — см. PostShowReceipt.
+    needs_post_show_receipt: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Когда отправили дайджест админам с напоминанием прикрепить чек.
+    # Чтобы не слать одно и то же повторно.
+    post_show_admin_notified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_by_admin_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     paid_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -352,6 +361,12 @@ class Booking(Base):
     )
     refund_request = relationship(
         "RefundRequest",
+        back_populates="booking",
+        uselist=False,   # one-to-one (booking_id unique)
+        cascade="all, delete-orphan",
+    )
+    post_show_receipt = relationship(
+        "PostShowReceipt",
         back_populates="booking",
         uselist=False,   # one-to-one (booking_id unique)
         cascade="all, delete-orphan",
@@ -410,6 +425,26 @@ class RefundRequest(Base):
     booking = relationship("Booking", back_populates="refund_request")
 
 
+class PostShowReceipt(Base):
+    """Чек, отправляемый пользователю на email ПОСЛЕ показа (по запросу при бронировании).
+    Один на бронь. sent_at заполняется когда письмо с прикреплённым файлом ушло."""
+    __tablename__ = "post_show_receipts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    booking_id: Mapped[int] = mapped_column(
+        ForeignKey("bookings.id", ondelete="CASCADE"),
+        nullable=False, unique=True, index=True,
+    )
+    file_url: Mapped[str] = mapped_column(String(512), nullable=False)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    sent_by_admin_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+    booking = relationship("Booking", back_populates="post_show_receipt")
+
+
 class BookingTransfer(Base):
     """Журнал переносов брони с одного показа на другой.
     Каждое нажатие «перенести» порождает новую запись (cancelled_at не используется
@@ -429,6 +464,7 @@ class MessageTemplateKind(str, Enum):
     manual_booking = "manual_booking"               # текст для отправки пользователю при ручной броне
     pre_booking_info = "pre_booking_info"           # запрос данных у пользователя ПЕРЕД ручной бронью
     post_payment = "post_payment"                   # после подтверждения оплаты (с QR и кодом)
+    post_show_receipt = "post_show_receipt"         # сопровождение чека после показа (письмо + вложение)
     user_cancel_notice = "user_cancel_notice"       # письмо пользователю об отмене брони
     admin_cancel_screening = "admin_cancel_screening"  # отмена всего показа
     refund_link = "refund_link"                     # сопровождение ссылки для возврата средств

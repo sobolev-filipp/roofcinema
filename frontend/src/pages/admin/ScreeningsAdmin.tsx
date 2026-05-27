@@ -110,8 +110,11 @@ export default function ScreeningsAdmin() {
             </select>
           </div>
           <div className="field" style={{ width: 220, marginBottom: 0 }}>
-            <label>Дата и время</label>
+            <label>Дата и время начала</label>
             <input type="datetime-local" required value={form.starts_at} onChange={(e) => setForm({ ...form, starts_at: e.target.value })} />
+            <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
+              Окончание показа автоматически: начало + продолжительность фильма.
+            </div>
           </div>
           <div className="field" style={{ width: 140, marginBottom: 0 }}>
             <label title="Сколько минут даётся на оплату одной брони">Таймер брони, мин</label>

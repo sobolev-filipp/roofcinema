@@ -907,10 +907,19 @@ label {
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 12px;
-  justify-content: space-between;
+  justify-content: start;
   gap: 6px;
   width: 100%;
+  /* Если кнопок много (как в Статистике), позволяем горизонтальную прокрутку
+     без визуального скроллбара — он скрыт, но жест/трекпад работают. */
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x;
 }
+.seg::-webkit-scrollbar { display: none; }
 .seg button {
   background: transparent;
   border: none;
@@ -920,7 +929,7 @@ label {
   color: var(--text-dim);
   border-radius: 8px;
   font-weight: 500;
-  flex: 1;
+  flex: 1 0 auto;
   white-space: nowrap;
 }
 .seg button:hover { background: transparent; color: var(--text); }

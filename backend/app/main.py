@@ -9,11 +9,11 @@ from sqlalchemy.orm import Session
 
 from .config import get_settings
 from .db import Base, SessionLocal, engine
-from .email_service import send_booking_window_opened
-from .models import BookingTransfer, LoginCode, Rooftop, Screening, ScreeningBookingNotify, User, UserRole
+from .email_service import send_booking_window_opened, send_post_show_receipt_pending_digest
+from .models import Booking, BookingTransfer, LoginCode, PostShowReceipt, Rooftop, Screening, ScreeningBookingNotify, User, UserRole
 from .routers import (
     admin_bookings, admin_users, attendees, auth, bookings, cities, geocode, message_templates,
-    movie_search, movies, payout_templates, receipts, refunds, rooftops,
+    movie_search, movies, payout_templates, post_show_receipts, receipts, refunds, rooftops,
     screening_notify, screenings, seat_types, statistics, uploads, users, ws,
 )
 from .security import hash_password
@@ -149,6 +149,129 @@ async def _notify_loop():
         await asyncio.sleep(60)
 
 
+_POST_SHOW_PAID_STATUSES = ("paid", "paid_by_balance", "attended")
+
+
+async def _post_show_receipt_loop():
+    """Каждые 5 минут проверяем закончившиеся показы:
+      1. Брони с прикреплённым файлом, но не отправленные → отправляем письмо с вложением.
+      2. Брони без прикреплённого файла → раз в жизни шлём дайджест админам с правом manage_receipts.
+
+    Конец показа = screening.ends_at (или starts_at + 3ч если не задан) в локальном
+    времени крыши.
+    """
+    from datetime import datetime
+    from .routers.post_show_receipts import _send_post_show_email
+
+    while True:
+        try:
+            db = SessionLocal()
+            try:
+                settings = get_settings()
+                # Берём все брони с needs_post_show_receipt=True и paid-статусом — на каждом тике
+                # их немного, поэтому фильтрацию по «закончился ли показ» делаем в Python.
+                candidates = (
+                    db.query(Booking)
+                    .options(
+                        joinedload(Booking.screening).joinedload(Screening.movie),
+                        joinedload(Booking.screening).joinedload(Screening.rooftop).joinedload(Rooftop.city),
+                        joinedload(Booking.post_show_receipt),
+                    )
+                    .filter(
+                        Booking.needs_post_show_receipt.is_(True),
+                        Booking.status.in_(_POST_SHOW_PAID_STATUSES),
+                    )
+                    .limit(1000)
+                    .all()
+                )
+
+                to_notify: list[Booking] = []
+                for b in candidates:
+                    s = b.screening
+                    if s is None:
+                        continue
+                    tz_name = (
+                        s.rooftop.city.timezone
+                        if s.rooftop and s.rooftop.city else None
+                    )
+                    local_now = now_in_tz(tz_name)
+                    # Конец показа: явный ends_at → длительность фильма → 3ч по умолчанию
+                    if s.ends_at:
+                        end_at = s.ends_at
+                    elif s.movie and s.movie.duration_min:
+                        end_at = s.starts_at + timedelta(minutes=int(s.movie.duration_min))
+                    else:
+                        end_at = s.starts_at + timedelta(hours=3)
+                    if end_at > local_now:
+                        continue  # показ ещё не закончился
+
+                    # Показ закончился. Что делать?
+                    has_file = b.post_show_receipt is not None and b.post_show_receipt.file_url
+                    already_sent = (
+                        b.post_show_receipt is not None
+                        and b.post_show_receipt.sent_at is not None
+                    )
+
+                    if has_file and not already_sent:
+                        # 1. Есть файл, не отправлен — отправляем
+                        try:
+                            _send_post_show_email(db, b)
+                        except Exception:
+                            log.exception("post-show auto-send failed booking_id=%s", b.id)
+                    elif not has_file and b.post_show_admin_notified_at is None:
+                        # 2. Файла нет, админов ещё не уведомляли — добавим в дайджест
+                        to_notify.append(b)
+
+                # Если есть кого включить в дайджест — соберём админов и пошлём письмо
+                if to_notify:
+                    admins = (
+                        db.query(User)
+                        .filter(User.is_active.is_(True))
+                        .filter(
+                            (User.role == UserRole.super_admin.value)
+                            | (User.role == UserRole.admin.value)
+                        )
+                        .all()
+                    )
+                    target_admins = []
+                    for a in admins:
+                        if a.role == UserRole.super_admin.value:
+                            target_admins.append(a)
+                        elif a.permissions is None or "manage_receipts" in (a.permissions or []):
+                            target_admins.append(a)
+
+                    pending_payload = [
+                        {
+                            "id": b.id,
+                            "full_name": b.full_name,
+                            "email": b.email,
+                            "movie": (b.screening.movie.title if b.screening and b.screening.movie else ""),
+                            "starts_at": (
+                                b.screening.starts_at.strftime("%d.%m.%Y %H:%M")
+                                if b.screening else ""
+                            ),
+                            "rooftop": (b.screening.rooftop.name if b.screening and b.screening.rooftop else ""),
+                        }
+                        for b in to_notify
+                    ]
+                    admin_link = f"{settings.APP_BASE_URL.rstrip('/')}/admin/receipts"
+                    for a in target_admins:
+                        try:
+                            send_post_show_receipt_pending_digest(a.email, pending_payload, admin_link)
+                        except Exception:
+                            log.exception("admin digest send failed user_id=%s", a.id)
+                    # Помечаем брони как «админ уведомлён», чтобы не слать повторно
+                    now_utc = datetime.utcnow()
+                    for b in to_notify:
+                        b.post_show_admin_notified_at = now_utc
+                    db.commit()
+            finally:
+                db.close()
+        except Exception:
+            log.exception("post_show_receipt_loop iteration failed")
+        await asyncio.sleep(300)  # раз в 5 минут — этого достаточно
+
+
 def _migrate_columns() -> None:
     """Добавляет новые колонки к существующим таблицам, если их нет.
     Безопасно при повторных запусках — проверяет через inspect перед ALTER TABLE."""
@@ -166,6 +289,16 @@ def _migrate_columns() -> None:
             conn.execute(text("ALTER TABLE rooftop_admin_invites ADD COLUMN permissions JSON"))
         if "target_rooftop_ids" not in ic:
             conn.execute(text("ALTER TABLE rooftop_admin_invites ADD COLUMN target_rooftop_ids JSON"))
+        # bookings: новый флаг — нужен ли пост-чек после показа
+        bc = cols("bookings")
+        if "needs_post_show_receipt" not in bc:
+            conn.execute(text("ALTER TABLE bookings ADD COLUMN needs_post_show_receipt BOOLEAN NOT NULL DEFAULT 0"))
+        if "post_show_admin_notified_at" not in bc:
+            conn.execute(text("ALTER TABLE bookings ADD COLUMN post_show_admin_notified_at DATETIME"))
+        # screenings: ends_at — локальное наивное время окончания показа
+        sc = cols("screenings")
+        if "ends_at" not in sc:
+            conn.execute(text("ALTER TABLE screenings ADD COLUMN ends_at DATETIME"))
         conn.commit()
 
 
@@ -182,14 +315,16 @@ async def lifespan(app: FastAPI):
     # безопасно публиковать WebSocket-события через broadcast_threadsafe.
     ws_manager.set_loop(asyncio.get_running_loop())
     notify_task = asyncio.create_task(_notify_loop())
+    post_show_task = asyncio.create_task(_post_show_receipt_loop())
     try:
         yield
     finally:
-        notify_task.cancel()
-        try:
-            await notify_task
-        except (asyncio.CancelledError, Exception):
-            pass
+        for t in (notify_task, post_show_task):
+            t.cancel()
+            try:
+                await t
+            except (asyncio.CancelledError, Exception):
+                pass
 
 
 settings = get_settings()
@@ -220,6 +355,7 @@ app.include_router(message_templates.router)
 app.include_router(admin_bookings.router)
 app.include_router(admin_users.router)
 app.include_router(refunds.router)
+app.include_router(post_show_receipts.router)
 app.include_router(statistics.router)
 app.include_router(uploads.router)
 app.include_router(geocode.router)

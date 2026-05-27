@@ -1,6 +1,23 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+import re
+
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+
+
+def _normalize_age_rating(raw: str | None) -> str | None:
+    """«age12» / «12» / «PG-13» → «12+» / «12+» / «PG-13». Используется в MovieIn."""
+    if not raw:
+        return None
+    s = str(raw).strip()
+    if not s:
+        return None
+    m = re.fullmatch(r"age\s*(\d+)", s, flags=re.IGNORECASE)
+    if m:
+        return f"{m.group(1)}+"
+    if re.fullmatch(r"\d+", s):
+        return f"{s}+"
+    return s
 
 
 class TokenOut(BaseModel):
@@ -161,7 +178,7 @@ class MovieIn(BaseModel):
     poster_url: str | None = Field(default=None, max_length=512)
     backdrop_url: str | None = Field(default=None, max_length=512)
     trailer_url: str | None = Field(default=None, max_length=512)
-    duration_min: int | None = Field(default=None, ge=1, le=600)
+    duration_min: int = Field(ge=1, le=600, description="Продолжительность в минутах — обязательно, нужна для авто-расчёта окончания показа")
     year: int | None = Field(default=None, ge=1880, le=2100)
     age_rating: str | None = Field(default=None, max_length=8)
     genres: str | None = Field(default=None, max_length=255)
@@ -171,9 +188,15 @@ class MovieIn(BaseModel):
     imdb_rating: float | None = Field(default=None, ge=0, le=10)
     kinopoisk_rating: float | None = Field(default=None, ge=0, le=10)
 
+    @field_validator("age_rating", mode="before")
+    @classmethod
+    def _norm_age(cls, v: str | None) -> str | None:
+        return _normalize_age_rating(v)
+
 
 class MovieUpdateIn(MovieIn):
     title: str | None = Field(default=None, max_length=255)
+    duration_min: int | None = Field(default=None, ge=1, le=600)
 
 
 class MovieOut(BaseModel):
@@ -269,6 +292,7 @@ class ScreeningIn(BaseModel):
     movie_id: int
     rooftop_id: int
     starts_at: datetime
+    ends_at: datetime | None = None
     booking_window_minutes: int = Field(default=120, ge=10, le=24 * 60)
     booking_opens_at: datetime | None = None
     booking_closes_at: datetime | None = None
@@ -280,6 +304,7 @@ class ScreeningIn(BaseModel):
 
 class ScreeningUpdateIn(BaseModel):
     starts_at: datetime | None = None
+    ends_at: datetime | None = None
     booking_window_minutes: int | None = Field(default=None, ge=10, le=24 * 60)
     booking_opens_at: datetime | None = None
     booking_closes_at: datetime | None = None
@@ -297,6 +322,7 @@ class ScreeningOut(BaseModel):
     movie_id: int
     rooftop_id: int
     starts_at: datetime
+    ends_at: datetime | None = None
     booking_window_minutes: int
     booking_opens_at: datetime | None = None
     booking_closes_at: datetime | None = None
@@ -325,6 +351,7 @@ ALLOWED_TEMPLATE_KINDS = (
     "manual_booking",
     "pre_booking_info",
     "post_payment",
+    "post_show_receipt",
     "user_cancel_notice",
     "admin_cancel_screening",
     "refund_link",
@@ -438,18 +465,22 @@ class BookingCreateIn(BaseModel):
     social_url: str | None = Field(default=None, max_length=512)
     pd_consent: bool = Field(description="Согласие на обработку персональных данных (152-ФЗ)")
     note: str | None = None
+    needs_post_show_receipt: bool = False
 
 
 class BookingScreeningInfo(BaseModel):
     """Урезанные данные о показе/фильме/крыше для отображения в брони.
     rooftop_address заполняется только для оплаченных/посещённых броней.
     city_timezone — нужен фронту, чтобы корректно показать expires_at (хранится в UTC)
-    и starts_at (хранится как наивное локальное время крыши)."""
+    и starts_at (хранится как наивное локальное время крыши).
+    ends_at — вычисляется в роутере (явный ends_at или starts_at + duration_min)."""
     model_config = ConfigDict(from_attributes=True)
     id: int
     starts_at: datetime
+    ends_at: datetime | None = None
     movie_id: int
     movie_title: str
+    movie_duration_min: int | None = None
     movie_poster_url: str | None = None
     rooftop_id: int
     rooftop_name: str
@@ -545,6 +576,15 @@ class RefundBasicOut(BaseModel):
     completed_at: datetime | None = None
 
 
+class PostShowReceiptOut(BaseModel):
+    """Информация о пост-чеке (приходит в составе BookingOut)."""
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    file_url: str
+    sent_at: datetime | None = None
+    created_at: datetime
+
+
 class BookingOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
@@ -561,6 +601,7 @@ class BookingOut(BaseModel):
     qr_token: str
     short_code: str
     note: str | None = None
+    needs_post_show_receipt: bool = False
     created_at: datetime
     paid_at: datetime | None = None
     attended_at: datetime | None = None
@@ -572,6 +613,7 @@ class BookingOut(BaseModel):
     attendees: list[BookingAttendeeOut] = []
     total_guests: int = 0  # сумма qty×capacity по items, заполняется в роутере
     refund_request: RefundBasicOut | None = None  # если есть активный запрос возврата
+    post_show_receipt: PostShowReceiptOut | None = None  # если был загружен пост-чек
 
 
 class InviteCreateIn(BaseModel):

@@ -161,6 +161,7 @@ class AdminManualBookingIn(BaseModel):
     items: list[BookingItemIn] = Field(min_length=1)
     note: str | None = None
     mark_as_paid: bool = False  # если админ хочет сразу пометить оплаченной
+    needs_post_show_receipt: bool = False  # отметить, что после показа нужен чек по email
 
 
 def _gen_short_code(db: Session) -> str:
@@ -238,6 +239,7 @@ def manual_create_booking(
         note=payload.note,
         created_by_admin_id=admin.id,
         paid_at=now if payload.mark_as_paid else None,
+        needs_post_show_receipt=payload.needs_post_show_receipt,
     )
     db.add(booking)
     db.flush()

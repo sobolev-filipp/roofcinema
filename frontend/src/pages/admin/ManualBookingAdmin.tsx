@@ -39,6 +39,7 @@ export default function ManualBookingAdmin() {
   const [qty, setQty] = useState<Qty>({});
   const [note, setNote] = useState("");
   const [markPaid, setMarkPaid] = useState(false);
+  const [needsReceipt, setNeedsReceipt] = useState(false);
 
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -129,6 +130,7 @@ export default function ManualBookingAdmin() {
         items,
         note: note.trim() || null,
         mark_as_paid: markPaid,
+        needs_post_show_receipt: needsReceipt,
       });
       setCreatedBooking(b);
     } catch (e: any) { setErr(e.message); }
@@ -144,6 +146,7 @@ export default function ManualBookingAdmin() {
     setQty({});
     setNote("");
     setMarkPaid(false);
+    setNeedsReceipt(false);
     setCreatedBooking(null);
     setCopyStatus(null);
     setErr(null);
@@ -495,6 +498,19 @@ export default function ManualBookingAdmin() {
             <label className="checkbox">
               <input type="checkbox" checked={markPaid} onChange={(e) => setMarkPaid(e.target.checked)} />
               <span>Сразу пометить оплаченной (оплата уже получена другим способом)</span>
+            </label>
+            <label className="checkbox">
+              <input
+                type="checkbox"
+                checked={needsReceipt}
+                onChange={(e) => setNeedsReceipt(e.target.checked)}
+              />
+              <span>
+                Нужен чек на email после показа
+                <span className="muted" style={{ marginLeft: 6, fontSize: 12 }}>
+                  — появится в разделе «Чеки → Чеки для отправки»
+                </span>
+              </span>
             </label>
             <div className="row gap" style={{ marginTop: 16, justifyContent: "flex-end" }}>
               <button className="ghost" onClick={resetAll} disabled={busy}>Очистить</button>

@@ -375,9 +375,17 @@ export default function MovieAdmin() {
               <label>Год</label>
               <input type="number" value={form.year} onChange={(e) => setForm({ ...form, year: e.target.value })} />
             </div>
-            <div className="field" style={{ width: 110 }}>
-              <label>Длительность, мин</label>
-              <input type="number" value={form.duration_min} onChange={(e) => setForm({ ...form, duration_min: e.target.value })} />
+            <div className="field" style={{ width: 130 }}>
+              <label>Длительность, мин *</label>
+              <input
+                type="number"
+                required
+                min={1}
+                max={600}
+                value={form.duration_min}
+                onChange={(e) => setForm({ ...form, duration_min: e.target.value })}
+                title="Обязательно — используется для авто-расчёта окончания показа"
+              />
             </div>
             <div className="field" style={{ width: 90 }}>
               <label>Возраст</label>

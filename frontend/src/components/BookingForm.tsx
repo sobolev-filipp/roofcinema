@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, type Booking, type Screening } from "../api";
 import { useAuth } from "../auth";
+import { formatTimeRange } from "../lib/screening";
 import { Spinner } from "./Loaders";
 
 type Qty = Record<number, number>;  // sst.id -> qty
@@ -20,6 +21,7 @@ export default function BookingForm({ screening, onCancel }: Props) {
   const [phone, setPhone] = useState(user?.phone ?? "");
   const [social, setSocial] = useState(user?.social_url ?? "");
   const [consent, setConsent] = useState(false);
+  const [needsReceipt, setNeedsReceipt] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -59,6 +61,7 @@ export default function BookingForm({ screening, onCancel }: Props) {
         phone: phone || null,
         social_url: social || null,
         pd_consent: consent,
+        needs_post_show_receipt: needsReceipt,
       });
       nav(`/bookings/${b.id}`);
     } catch (e: any) {
@@ -68,9 +71,24 @@ export default function BookingForm({ screening, onCancel }: Props) {
     }
   }
 
+  const timeRange = formatTimeRange(
+    screening.starts_at,
+    screening.ends_at,
+    screening.movie?.duration_min,
+  );
+
   return (
     <form onSubmit={submit} className="booking-form">
       {err && <div className="error">{err}</div>}
+
+      <div className="hint-box" style={{ marginBottom: 12, fontSize: 13 }}>
+        Сеанс: <b>{timeRange}</b>
+        {screening.movie?.duration_min && (
+          <span className="muted" style={{ marginLeft: 6, fontSize: 12 }}>
+            ({screening.movie.duration_min} мин)
+          </span>
+        )}
+      </div>
 
       <h4 style={{ marginTop: 0 }}>Выберите места</h4>
       <div className="seat-list">
@@ -156,6 +174,20 @@ export default function BookingForm({ screening, onCancel }: Props) {
             <span>
               Согласен на обработку персональных данных согласно 152-ФЗ
               и принимаю <a href="#">Условия бронирования</a>.
+            </span>
+          </label>
+
+          <label className="checkbox" style={{ marginTop: 8 }}>
+            <input
+              type="checkbox"
+              checked={needsReceipt}
+              onChange={(e) => setNeedsReceipt(e.target.checked)}
+            />
+            <span>
+              Нужен чек об оплате на email{" "}
+              <span className="muted" style={{ fontSize: 12 }}>
+                — чек придёт на вашу почту <b>после показа</b>. Изменить решение можно в карточке брони.
+              </span>
             </span>
           </label>
 

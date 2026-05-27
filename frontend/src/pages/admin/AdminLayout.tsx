@@ -34,16 +34,20 @@ export default function AdminLayout() {
     let alive = true;
     async function refresh() {
       try {
-        const [receipts, refunds] = await Promise.all([
+        const [receipts, postShow, refunds] = await Promise.all([
           canSeeReceipts
             ? api.get<{ count: number }>("/api/admin/receipts/pending-count")
+            : Promise.resolve({ count: 0 }),
+          canSeeReceipts
+            ? api.get<{ count: number }>("/api/admin/post-show-receipts/pending-count")
             : Promise.resolve({ count: 0 }),
           canSeeRefunds
             ? api.get<{ count: number }>("/api/admin/refund-requests/pending-count")
             : Promise.resolve({ count: 0 }),
         ]);
         if (alive) {
-          setPendingReceipts(receipts.count || 0);
+          // Бейдж у пункта «Чеки» суммирует входящие (на проверке) + ждущие отправки
+          setPendingReceipts((receipts.count || 0) + (postShow.count || 0));
           setPendingRefunds(refunds.count || 0);
         }
       } catch {

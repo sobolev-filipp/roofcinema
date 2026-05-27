@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { api, type Booking } from "../api";
 import { Skeleton } from "../components/Loaders";
 import { STATUS_COLOR, STATUS_LABELS, formatCountdown, msUntil } from "../lib/bookingStatus";
+import { formatEndsAt } from "../lib/screening";
 
 const fmt = (iso: string) =>
   new Date(iso).toLocaleString("ru-RU", { dateStyle: "long", timeStyle: "short" });
@@ -79,6 +80,18 @@ function BookingRow({ b }: { b: Booking }) {
             <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>
               {info ? fmt(info.starts_at) : ""}
             </div>
+            {info && (() => {
+              const ends = formatEndsAt({
+                starts_at: info.starts_at,
+                ends_at: info.ends_at,
+                duration_min: info.movie_duration_min,
+              });
+              return ends ? (
+                <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
+                  до ≈ {ends}
+                </div>
+              ) : null;
+            })()}
             <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
               {info?.city_name} · {info?.rooftop_name}
             </div>

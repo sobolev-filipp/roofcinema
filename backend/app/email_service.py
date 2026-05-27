@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import logging
+import mimetypes
 import smtplib
+from email import encoders
+from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formataddr
+from pathlib import Path
 
 from .config import get_settings
 
@@ -134,6 +138,95 @@ def send_attendee_invite(
         f"{payment_line}\n"
     )
     send_email(email, "Вас пригласили на показ — Кино на крыше", body)
+
+
+def send_email_with_attachment(
+    to: str,
+    subject: str,
+    body_text: str,
+    body_html: str | None,
+    attachment_path: Path,
+    attachment_name: str,
+) -> bool:
+    """Письмо с прикреплённым файлом (чек/PDF/JPG). Используется для post-show receipts.
+    Возвращает True при успехе. В dev-режиме (без SMTP_HOST) пишет в лог."""
+    s = get_settings()
+    if not s.SMTP_HOST:
+        log.warning(
+            "[DEV-EMAIL] To: %s | Subject: %s | Attachment: %s\n%s\n-----",
+            to, subject, attachment_name, body_text,
+        )
+        print(
+            f"\n[DEV-EMAIL]\nTo: {to}\nSubject: {subject}\nAttachment: {attachment_name}\n\n{body_text}\n-----\n",
+            flush=True,
+        )
+        return True
+
+    try:
+        msg = MIMEMultipart("mixed")
+        msg["Subject"] = subject
+        msg["From"] = formataddr(("Кино на крыше", s.SMTP_FROM))
+        msg["To"] = to
+
+        # Текстовое + HTML тело — в подмножестве alternative
+        body_part = MIMEMultipart("alternative")
+        body_part.attach(MIMEText(body_text, "plain", "utf-8"))
+        if body_html:
+            body_part.attach(MIMEText(body_html, "html", "utf-8"))
+        msg.attach(body_part)
+
+        # Файл вложения
+        mime_type, _ = mimetypes.guess_type(str(attachment_path))
+        if mime_type:
+            main_type, sub_type = mime_type.split("/", 1)
+        else:
+            main_type, sub_type = "application", "octet-stream"
+        with open(attachment_path, "rb") as f:
+            payload = f.read()
+        part = MIMEBase(main_type, sub_type)
+        part.set_payload(payload)
+        encoders.encode_base64(part)
+        part.add_header(
+            "Content-Disposition",
+            f'attachment; filename="{attachment_name}"',
+        )
+        msg.attach(part)
+
+        with smtplib.SMTP(s.SMTP_HOST, s.SMTP_PORT, timeout=30) as smtp:
+            if s.SMTP_USE_TLS:
+                smtp.starttls()
+            if s.SMTP_USER:
+                smtp.login(s.SMTP_USER, s.SMTP_PASSWORD)
+            smtp.sendmail(s.SMTP_FROM, [to], msg.as_string())
+        return True
+    except Exception as e:
+        log.exception("SMTP send (with attachment) failed: %s", e)
+        return False
+
+
+def send_post_show_receipt_pending_digest(
+    admin_email: str,
+    pending: list[dict],
+    admin_link: str,
+) -> None:
+    """Письмо администратору со списком броней, для которых нужно прикрепить чек.
+    pending = [{"id", "full_name", "email", "movie", "starts_at", "rooftop"}, ...]"""
+    lines = ["Здравствуйте!", ""]
+    lines.append("После окончания показов не для всех броней с заказанным чеком был прикреплён файл:")
+    lines.append("")
+    for p in pending:
+        lines.append(
+            f"  • #{p['id']} — {p['full_name']} ({p['email']})"
+        )
+        lines.append(
+            f"    «{p['movie']}» · {p['starts_at']} · {p['rooftop']}"
+        )
+    lines.append("")
+    lines.append(f"Прикрепить чеки можно здесь: {admin_link}")
+    lines.append("")
+    lines.append("Это уведомление автоматическое — приходит один раз по каждой брони.")
+    body = "\n".join(lines)
+    send_email(admin_email, "Напоминание: нужно прикрепить чеки", body)
 
 
 def send_payment_rejected(email: str, movie_title: str, booking_id: int, reason: str) -> None:
