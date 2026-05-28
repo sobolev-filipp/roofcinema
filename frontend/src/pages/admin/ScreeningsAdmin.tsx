@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, type Movie, type PayoutTemplate, type Rooftop, type Screening, type SeatType } from "../../api";
+import { Skeleton } from "../../components/Loaders";
+import MoviePickerModal from "../../components/MoviePickerModal";
 import { useUI } from "../../ui";
 
 type Alloc = { seat_type_id: number; price: number; count: number; capacity: number };
@@ -11,6 +13,7 @@ export default function ScreeningsAdmin() {
   const [screenings, setScreenings] = useState<Screening[]>([]);
   const [templates, setTemplates] = useState<PayoutTemplate[]>([]);
   const [err, setErr] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const [form, setForm] = useState({
     movie_id: 0, rooftop_id: 0, starts_at: "",
@@ -21,8 +24,12 @@ export default function ScreeningsAdmin() {
   });
   const [seatTypes, setSeatTypes] = useState<SeatType[]>([]);
   const [allocs, setAllocs] = useState<Alloc[]>([]);
+  const [moviePickerOpen, setMoviePickerOpen] = useState(false);
+
+  const selectedMovie = movies.find((m) => m.id === form.movie_id) ?? null;
 
   async function reload() {
+    setLoading(true);
     const [ms, rs, sc, tpls] = await Promise.all([
       api.get<Movie[]>("/api/movies"),
       api.get<Rooftop[]>("/api/rooftops?active_only=false"),
@@ -30,6 +37,7 @@ export default function ScreeningsAdmin() {
       api.get<PayoutTemplate[]>("/api/payout-templates").catch(() => [] as PayoutTemplate[]),
     ]);
     setMovies(ms); setRooftops(rs); setScreenings(sc); setTemplates(tpls);
+    setLoading(false);
     // подставим шаблон по умолчанию для новой формы
     const def = tpls.find((t) => t.is_default);
     if (def) setForm((f) => f.payout_template_id == null ? { ...f, payout_template_id: def.id } : f);
@@ -94,13 +102,33 @@ export default function ScreeningsAdmin() {
       <h2 style={{ marginTop: 16 }}>Показы</h2>
       <form onSubmit={create} className="card" style={{ marginBottom: 24 }}>
         <h3 style={{ marginTop: 0 }}>Новый показ</h3>
-        <div className="row gap" style={{ flexWrap: "wrap", alignItems: "flex-end" }}>
+        <div className="row gap screening-form-row" style={{ flexWrap: "wrap", alignItems: "flex-start" }}>
           <div className="field" style={{ flex: 1, minWidth: 220, marginBottom: 0 }}>
             <label>Фильм</label>
-            <select required value={form.movie_id || ""} onChange={(e) => setForm({ ...form, movie_id: Number(e.target.value) })}>
-              <option value="">—</option>
-              {movies.map((m) => <option key={m.id} value={m.id}>{m.title}{m.year ? ` (${m.year})` : ""}</option>)}
-            </select>
+            <button
+              type="button"
+              className="movie-picker-trigger"
+              onClick={() => setMoviePickerOpen(true)}
+            >
+              {selectedMovie ? (
+                <>
+                  {selectedMovie.poster_url && (
+                    <img src={selectedMovie.poster_url} alt="" />
+                  )}
+                  <span>
+                    {selectedMovie.title}
+                    {selectedMovie.year && (
+                      <span className="muted" style={{ marginLeft: 6, fontSize: 12 }}>
+                        ({selectedMovie.year})
+                      </span>
+                    )}
+                  </span>
+                </>
+              ) : (
+                <span className="muted">Выберите фильм…</span>
+              )}
+              <span className="movie-picker-arrow">▾</span>
+            </button>
           </div>
           <div className="field" style={{ flex: 1, minWidth: 220, marginBottom: 0 }}>
             <label>Крыша</label>
@@ -112,15 +140,15 @@ export default function ScreeningsAdmin() {
           <div className="field" style={{ width: 220, marginBottom: 0 }}>
             <label>Дата и время начала</label>
             <input type="datetime-local" required value={form.starts_at} onChange={(e) => setForm({ ...form, starts_at: e.target.value })} />
-            <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
-              Окончание показа автоматически: начало + продолжительность фильма.
-            </div>
           </div>
           <div className="field" style={{ width: 140, marginBottom: 0 }}>
             <label title="Сколько минут даётся на оплату одной брони">Таймер брони, мин</label>
             <input type="number" min={10} max={1440} value={form.booking_window_minutes}
                    onChange={(e) => setForm({ ...form, booking_window_minutes: Number(e.target.value) })} />
           </div>
+        </div>
+        <div className="muted" style={{ fontSize: 11, marginTop: 6 }}>
+          Окончание показа считается автоматически: начало + продолжительность фильма.
         </div>
 
         <div className="row gap" style={{ flexWrap: "wrap", marginTop: 10 }}>
@@ -215,8 +243,35 @@ export default function ScreeningsAdmin() {
         </button>
       </form>
 
+      <MoviePickerModal
+        open={moviePickerOpen}
+        movies={movies}
+        selectedId={form.movie_id || null}
+        onSelect={(id) => setForm({ ...form, movie_id: id })}
+        onClose={() => setMoviePickerOpen(false)}
+      />
+
+      {loading ? (
+        <div className="cards-grid"><Skeleton variant="card" count={4} /></div>
+      ) : (
       <div className="cards-grid">
-        {screenings.map((s) => (
+        {screenings
+          .filter((s) => {
+            // Прошедшие показы скрываем: «прошёл» = ends_at < now
+            // (либо если ends_at нет — старт + длительность фильма < now, иначе старт + 3ч).
+            const now = Date.now();
+            const endIso = s.ends_at;
+            let endMs: number;
+            if (endIso) {
+              endMs = new Date(endIso).getTime();
+            } else {
+              const startMs = new Date(s.starts_at).getTime();
+              const duration = s.movie?.duration_min ?? 180;
+              endMs = startMs + duration * 60_000;
+            }
+            return endMs > now;
+          })
+          .map((s) => (
           <div key={s.id} className="card">
             <div className="row between">
               <h3 style={{ margin: 0, fontSize: 15 }}>{s.movie.title}</h3>
@@ -240,6 +295,7 @@ export default function ScreeningsAdmin() {
           </div>
         ))}
       </div>
+      )}
     </div>
   );
 }

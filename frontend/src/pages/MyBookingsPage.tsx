@@ -13,14 +13,34 @@ export default function MyBookingsPage() {
   const [loading, setLoading] = useState(true);
   const [, force] = useState(0);
 
-  useEffect(() => {
-    api.get<Booking[]>("/api/bookings/me").then(setBookings).finally(() => setLoading(false));
-  }, []);
+  async function loadList() {
+    try {
+      const list = await api.get<Booking[]>("/api/bookings/me");
+      setBookings(list);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { void loadList(); }, []);
 
   // обновляем UI каждую секунду, чтобы таймеры тикали
   useEffect(() => {
     const t = setInterval(() => force((x) => x + 1), 1000);
     return () => clearInterval(t);
+  }, []);
+
+  // Real-time: пере-fetch раз в 10с и сразу при возврате на вкладку
+  useEffect(() => {
+    const t = setInterval(() => { void loadList(); }, 10_000);
+    const onVis = () => {
+      if (document.visibilityState === "visible") void loadList();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener("visibilitychange", onVis);
+    };
   }, []);
 
   const waitingPayment = bookings.filter((b) => b.status === "waiting_payment");

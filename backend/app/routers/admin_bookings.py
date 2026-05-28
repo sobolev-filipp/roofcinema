@@ -13,18 +13,20 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 
 from ..db import get_db
 from ..deps import require_admin_or_super, require_perm
+from ..email_service import send_template_email
 from ..models import (
     Booking,
     BookingAttendee,
     BookingItem,
     BookingStatus,
+    MessageTemplate,
     Rooftop,
     Screening,
     ScreeningSeatType,
     User,
 )
 from ..schemas import BookingItemIn, BookingOut
-from ..utils import now_in_tz
+from ..utils import now_in_tz, render_template
 from ..ws_manager import manager
 
 from .bookings import _eager as booking_eager, _stock_used, _to_out as booking_to_out
@@ -487,6 +489,48 @@ class CheckInConfirmPayload(BaseModel):
     code: str
 
 
+def _send_welcome_on_checkin(db: Session, booking: Booking, full_name: str, email_to: str) -> None:
+    """Шлёт приветственное письмо при check-in. Если шаблона welcome_on_checkin
+    нет — короткий fallback-текст."""
+    from datetime import timedelta as _td
+    s = booking.screening
+    starts_at = s.starts_at.strftime("%d.%m.%Y %H:%M") if s else ""
+    ends_at = ""
+    if s:
+        end_dt = s.ends_at
+        if end_dt is None and s.movie and s.movie.duration_min:
+            end_dt = s.starts_at + _td(minutes=int(s.movie.duration_min))
+        if end_dt:
+            ends_at = end_dt.strftime("%d.%m.%Y %H:%M")
+    ctx = {
+        "full_name": full_name,
+        "movie": s.movie.title if (s and s.movie) else "",
+        "starts_at": starts_at,
+        "ends_at": ends_at,
+        "rooftop": s.rooftop.name if (s and s.rooftop) else "",
+        "rooftop_address": s.rooftop.address if (s and s.rooftop) else "",
+        "city": s.rooftop.city.name if (s and s.rooftop and s.rooftop.city) else "",
+    }
+    tpl = (
+        db.query(MessageTemplate)
+        .filter(MessageTemplate.kind == "welcome_on_checkin", MessageTemplate.is_default.is_(True))
+        .first()
+    )
+    if not tpl:
+        tpl = db.query(MessageTemplate).filter(MessageTemplate.kind == "welcome_on_checkin").first()
+    if tpl:
+        body = render_template(tpl.text, ctx)
+    else:
+        body = (
+            f"Здравствуйте, {full_name}!\n\n"
+            f"Добро пожаловать на показ «{ctx['movie']}» — мы вас отметили.\n"
+            f"Начало: {ctx['starts_at']}\n"
+            f"Место: {ctx['rooftop']}, {ctx['city']}\n\n"
+            f"Хорошего вечера! 🎬"
+        )
+    send_template_email(email_to, "Добро пожаловать! — Кино на крыше", body)
+
+
 @router.post("/check-in/confirm", response_model=CheckInConfirmOut)
 def check_in_confirm(
     payload: CheckInConfirmPayload,
@@ -513,6 +557,15 @@ def check_in_confirm(
                     {"event": "updated", "booking_id": booking.id, "screening_id": booking.screening_id},
                 )
         except Exception:
+            pass
+
+        # Приветственное письмо (шаблон welcome_on_checkin)
+        try:
+            email_to = attendee.email if attendee else booking.email
+            recipient_name = (attendee.full_name if attendee and attendee.full_name else booking.full_name)
+            _send_welcome_on_checkin(db, booking, recipient_name, email_to)
+        except Exception:
+            # Не блокируем check-in если письмо не ушло
             pass
 
     return CheckInConfirmOut(

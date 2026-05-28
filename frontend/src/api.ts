@@ -163,6 +163,8 @@ export type MessageTemplateKind =
   | "pre_booking_info"
   | "post_payment"
   | "post_show_receipt"
+  | "payment_reminder"
+  | "welcome_on_checkin"
   | "user_cancel_notice"
   | "admin_cancel_screening"
   | "refund_link"
@@ -183,6 +185,8 @@ export const TEMPLATE_KIND_LABELS: Record<MessageTemplateKind, string> = {
   pre_booking_info: "Запрос данных у пользователя",
   post_payment: "После оплаты (с QR-кодом)",
   post_show_receipt: "Чек после показа (с вложением)",
+  payment_reminder: "Напоминание об оплате (< 25% времени)",
+  welcome_on_checkin: "Приветствие при check-in",
   user_cancel_notice: "Отмена брони (письмо пользователю)",
   admin_cancel_screening: "Отмена показа целиком",
   refund_link: "Возврат средств — ссылка на форму",

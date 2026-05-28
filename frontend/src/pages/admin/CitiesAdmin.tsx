@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, type City } from "../../api";
 import Autocomplete from "../../components/Autocomplete";
+import { Skeleton } from "../../components/Loaders";
 import { useUI } from "../../ui";
 
 type CitySuggestion = { name: string; region: string; display: string };
@@ -12,10 +13,13 @@ export default function CitiesAdmin() {
   const [timezones, setTimezones] = useState<Timezone[]>([]);
   const [newCity, setNewCity] = useState({ name: "", timezone: "Europe/Moscow" });
   const [err, setErr] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   async function reload() {
+    setLoading(true);
     try { setCities(await api.get<City[]>("/api/cities?active_only=false")); } catch {}
     try { setTimezones(await api.get<Timezone[]>("/api/cities/timezones")); } catch {}
+    setLoading(false);
   }
   useEffect(() => { reload(); }, []);
 
@@ -75,6 +79,11 @@ export default function CitiesAdmin() {
         </div>
       </form>
 
+      {loading ? (
+        <div className="cards-grid">
+          <Skeleton variant="card" count={3} />
+        </div>
+      ) : (
       <div className="cards-grid">
         {cities.map((c) => {
           const tzLabel = timezones.find((t) => t.value === c.timezone)?.label ?? c.timezone;
@@ -92,6 +101,7 @@ export default function CitiesAdmin() {
           );
         })}
       </div>
+      )}
     </div>
   );
 }

@@ -337,6 +337,8 @@ class Booking(Base):
     # Когда отправили дайджест админам с напоминанием прикрепить чек.
     # Чтобы не слать одно и то же повторно.
     post_show_admin_notified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Когда отправили напоминание пользователю «осталось < 25% времени на оплату».
+    payment_reminder_sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_by_admin_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     paid_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -465,6 +467,8 @@ class MessageTemplateKind(str, Enum):
     pre_booking_info = "pre_booking_info"           # запрос данных у пользователя ПЕРЕД ручной бронью
     post_payment = "post_payment"                   # после подтверждения оплаты (с QR и кодом)
     post_show_receipt = "post_show_receipt"         # сопровождение чека после показа (письмо + вложение)
+    payment_reminder = "payment_reminder"           # напоминание оплатить (остаётся < 25% времени)
+    welcome_on_checkin = "welcome_on_checkin"       # приветствие при отметке прихода (QR / код)
     user_cancel_notice = "user_cancel_notice"       # письмо пользователю об отмене брони
     admin_cancel_screening = "admin_cancel_screening"  # отмена всего показа
     refund_link = "refund_link"                     # сопровождение ссылки для возврата средств

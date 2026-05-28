@@ -46,6 +46,21 @@ export default function BookingPage() {
     return () => clearInterval(t);
   }, []);
 
+  // Real-time: подтягиваем актуальное состояние брони раз в 5 секунд +
+  // сразу когда вкладка становится видимой (быстрее, чем 5с после ухода в фон).
+  useEffect(() => {
+    if (!id) return;
+    const t = setInterval(() => { void load(); }, 5000);
+    const onVis = () => {
+      if (document.visibilityState === "visible") void load();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [id]); // eslint-disable-line
+
   if (err) return <div className="container"><div className="error">{err}</div></div>;
   if (!booking) return (
     <div className="container">
@@ -229,16 +244,24 @@ export default function BookingPage() {
           </div>
         </div>
       )}
-      {isPausedForReceipt && (
-        <div className="card timer-card" style={{ borderColor: "#e9b949" }}>
-          <div className="muted" style={{ fontSize: 13 }}>Таймер брони на паузе</div>
-          <div className="timer-value" style={{ color: "#e9b949" }}>⏸ {formatCountdown(remainingMs)}</div>
-          <div className="muted" style={{ fontSize: 12 }}>
-            Чек ждёт проверки администратора. Если оплата подтвердится — бронь станет оплаченной.
-            Если откажут — таймер продолжится с этого же значения.
+      {isPausedForReceipt && (() => {
+        // Замораживаем оставшееся время: считаем разницу expires_at − uploaded_at
+        // один раз и не обновляем (поэтому не зависит от Date.now()).
+        const frozenMs = pendingReceipt
+          ? parseUtc(booking.expires_at).getTime() - parseUtc(pendingReceipt.uploaded_at).getTime()
+          : remainingMs;
+        return (
+          <div className="card timer-card" style={{ borderColor: "#e9b949" }}>
+            <div className="muted" style={{ fontSize: 13 }}>Таймер брони на паузе</div>
+            <div className="timer-value" style={{ color: "#e9b949" }}>⏸ {formatCountdown(frozenMs)}</div>
+            <div className="muted" style={{ fontSize: 12 }}>
+              Чек ждёт проверки администратора. Время заморожено — если оплата подтвердится,
+              бронь станет оплаченной. Если откажут — таймер продолжится с того же значения;
+              если останется менее 25% времени, мы автоматически добавим вам ещё 25% — на новый чек.
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       <div className="card" style={{ marginTop: 12 }}>
         <h3 style={{ marginTop: 0 }}>Состав брони</h3>

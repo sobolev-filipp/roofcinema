@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type City, type Rooftop } from "../../api";
 import Autocomplete from "../../components/Autocomplete";
+import { Skeleton } from "../../components/Loaders";
 import { useUI } from "../../ui";
 
 type AddressSuggestion = { address: string; lat: number; lng: number; display: string; full_display: string };
@@ -15,14 +16,17 @@ export default function RooftopsAdmin() {
     lat: null as number | null, lng: null as number | null,
   });
   const [err, setErr] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   async function reload() {
+    setLoading(true);
     const [cs, rs] = await Promise.all([
       api.get<City[]>("/api/cities?active_only=false"),
       api.get<Rooftop[]>("/api/rooftops?active_only=false"),
     ]);
     setCities(cs);
     setRooftops(rs);
+    setLoading(false);
   }
   useEffect(() => { reload(); }, []);
 
@@ -96,6 +100,9 @@ export default function RooftopsAdmin() {
         </div>
       </form>
 
+      {loading ? (
+        <div className="cards-grid"><Skeleton variant="card" count={3} /></div>
+      ) : (
       <div className="cards-grid">
         {rooftops.map((r) => {
           const city = cities.find((c) => c.id === r.city_id);
@@ -117,6 +124,7 @@ export default function RooftopsAdmin() {
           );
         })}
       </div>
+      )}
     </div>
   );
 }

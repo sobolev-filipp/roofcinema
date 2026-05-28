@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getToken, type Booking, type PaymentReceipt } from "../api";
 import { Spinner } from "./Loaders";
 
@@ -21,6 +21,8 @@ const STATUS_COLOR: Record<PaymentReceipt["status"], string> = {
 
 export default function ReceiptUploadBox({ booking, onUploaded }: Props) {
   const ref = useRef<HTMLInputElement>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -28,7 +30,31 @@ export default function ReceiptUploadBox({ booking, onUploaded }: Props) {
   const pending = last && last.status === "pending" ? last : null;
   const rejected = last && last.status === "rejected" ? last : null;
 
-  async function upload(file: File) {
+  // Создаём blob-URL для превью выбранного файла (картинки). PDF просто покажем как имя.
+  useEffect(() => {
+    if (!file) { setPreviewUrl(null); return; }
+    if (!file.type.startsWith("image/")) { setPreviewUrl(null); return; }
+    const url = URL.createObjectURL(file);
+    setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+
+  function onFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    if (f) {
+      setFile(f);
+      setErr(null);
+    }
+  }
+
+  function clearFile() {
+    setFile(null);
+    setErr(null);
+    if (ref.current) ref.current.value = "";
+  }
+
+  async function send() {
+    if (!file) return;
     setBusy(true); setErr(null);
     try {
       const fd = new FormData();
@@ -40,18 +66,14 @@ export default function ReceiptUploadBox({ booking, onUploaded }: Props) {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.detail || `Ошибка ${res.status}`);
+      setFile(null);
+      if (ref.current) ref.current.value = "";
       onUploaded(data as Booking);
     } catch (e: any) {
       setErr(e.message);
     } finally {
       setBusy(false);
-      if (ref.current) ref.current.value = "";
     }
-  }
-
-  function onFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0];
-    if (f) void upload(f);
   }
 
   return (
@@ -96,15 +118,47 @@ export default function ReceiptUploadBox({ booking, onUploaded }: Props) {
       )}
 
       {!pending && (
-        <div className="upload-controls">
+        <div className="upload-controls" style={{ flexDirection: "column", alignItems: "stretch", gap: 12 }}>
           <input ref={ref} type="file" accept="image/*,application/pdf" onChange={onFile} hidden />
-          <button type="button" className="primary" onClick={() => ref.current?.click()} disabled={busy}>
-            {busy && <Spinner />}
-            {busy ? "Загрузка..." : (rejected ? "Загрузить новый чек" : "Загрузить чек об оплате")}
-          </button>
-          <span className="muted" style={{ fontSize: 12 }}>
-            JPG/PNG/PDF до 8 МБ
-          </span>
+
+          {!file ? (
+            <div className="row gap" style={{ alignItems: "center", flexWrap: "wrap" }}>
+              <button type="button" className="primary" onClick={() => ref.current?.click()} disabled={busy}>
+                📎 Выбрать файл
+              </button>
+              <span className="muted" style={{ fontSize: 12 }}>
+                JPG/PNG/PDF до 8 МБ
+              </span>
+            </div>
+          ) : (
+            <>
+              <div className="receipt-preview">
+                {previewUrl ? (
+                  <img src={previewUrl} alt="превью чека" />
+                ) : (
+                  <div className="receipt-preview-pdf">
+                    <span style={{ fontSize: 32 }}>📄</span>
+                    <div style={{ fontSize: 13, fontWeight: 600, marginTop: 6 }}>{file.name}</div>
+                    <div className="muted" style={{ fontSize: 11 }}>
+                      {(file.size / 1024).toFixed(0)} КБ · PDF
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="row gap" style={{ flexWrap: "wrap" }}>
+                <button type="button" className="primary" onClick={send} disabled={busy}>
+                  {busy && <Spinner />}
+                  {busy ? "Отправляем..." : "Отправить чек"}
+                </button>
+                <button type="button" className="ghost" onClick={() => ref.current?.click()} disabled={busy}>
+                  Заменить файл
+                </button>
+                <button type="button" className="ghost" onClick={clearFile} disabled={busy}>
+                  Отмена
+                </button>
+              </div>
+            </>
+          )}
         </div>
       )}
 

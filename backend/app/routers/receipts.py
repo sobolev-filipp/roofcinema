@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import secrets
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -329,6 +329,18 @@ def reject_receipt(
         paused_for = now - r.uploaded_at
         if paused_for.total_seconds() > 0:
             b.expires_at = b.expires_at + paused_for
+
+        # Бонус +25% к окну, если после возобновления остаётся <25%.
+        # Это даёт пользователю гарантированно достаточно времени, чтобы
+        # переслать новый чек после отказа.
+        try:
+            window = timedelta(minutes=int(b.screening.booking_window_minutes or 120))
+        except Exception:
+            window = timedelta(minutes=120)
+        remaining = b.expires_at - now
+        if remaining > timedelta(0) and remaining * 4 < window:
+            bonus = window // 4  # 25% от окна
+            b.expires_at = b.expires_at + bonus
 
     r.status = PaymentReceiptStatus.rejected.value
     r.reviewed_at = now

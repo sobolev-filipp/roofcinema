@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 
 from ..db import get_db
 from ..deps import require_perm
+from ..config import get_settings
 from ..email_service import send_email_with_attachment
 from ..models import (
     Booking,
@@ -58,6 +59,15 @@ def _booking_dict(b: Booking) -> dict:
         }
         for it in b.items
     ]
+    # Вычисляем расчётное окончание показа — фронту нужно знать «во сколько уйдёт чек»
+    ends_at_iso = None
+    if info:
+        end_dt = info.ends_at
+        if end_dt is None and info.movie and info.movie.duration_min:
+            end_dt = info.starts_at + timedelta(minutes=int(info.movie.duration_min))
+        if end_dt is None:
+            end_dt = info.starts_at + timedelta(hours=3)
+        ends_at_iso = end_dt.isoformat()
     return {
         "id": b.id,
         "full_name": b.full_name,
@@ -70,7 +80,9 @@ def _booking_dict(b: Booking) -> dict:
         "screening": {
             "id": info.id if info else None,
             "starts_at": info.starts_at.isoformat() if info else None,
+            "ends_at": ends_at_iso,
             "movie_title": info.movie.title if (info and info.movie) else None,
+            "movie_duration_min": (info.movie.duration_min if (info and info.movie) else None),
             "rooftop_name": info.rooftop.name if (info and info.rooftop) else None,
             "city_name": (
                 info.rooftop.city.name
@@ -179,6 +191,7 @@ def _render_post_show_receipt_text(db: Session, b: Booking) -> str:
         f"- {it.name} ×{it.qty} — {int(float(it.price_each) * it.qty)} ₽"
         for it in b.items
     )
+    booking_link = f"{get_settings().APP_BASE_URL.rstrip('/')}/bookings/{b.id}"
     ctx = {
         "full_name": b.full_name,
         "movie": info.movie.title if (info and info.movie) else "",
@@ -187,6 +200,7 @@ def _render_post_show_receipt_text(db: Session, b: Booking) -> str:
         "city": info.rooftop.city.name if (info and info.rooftop and info.rooftop.city) else "",
         "items": items_text,
         "amount": f"{int(float(b.total_amount))}",
+        "booking_link": booking_link,
     }
 
     if tpl:

@@ -72,6 +72,13 @@ export default function BookingsAdmin() {
 
   useBookingsWs(screeningId, reload);
   useEffect(() => { const t = setInterval(() => force((x) => x + 1), 1000); return () => clearInterval(t); }, []);
+  // Подстраховочный авто-рефреш — раз в 15с подтянет новые брони и проставит expired,
+  // даже если WS-соединение дропнулось.
+  useEffect(() => {
+    if (!screeningId) return;
+    const t = setInterval(() => reload(), 15_000);
+    return () => clearInterval(t);
+  }, [screeningId]); // eslint-disable-line
 
   const selectedScreening = useMemo(() => screenings.find((s) => s.id === screeningId) ?? null, [screenings, screeningId]);
 

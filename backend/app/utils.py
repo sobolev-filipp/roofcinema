@@ -94,11 +94,24 @@ TEMPLATE_PLACEHOLDERS: dict[str, list[str]] = {
         "{full_name}", "{movie}", "{starts_at}", "{ends_at}",
         "{rooftop}", "{city}",
         "{rooftop_address}", "{short_code}", "{qr_image_link}", "{items}",
+        "{booking_link}",
     ],
     "post_show_receipt": [
         # Сопровождение чека после показа — текст письма, к которому прикладывается файл.
+        # Сам файл чека добавляется автоматически как вложение — указывать его в тексте не нужно.
         "{full_name}", "{movie}", "{starts_at}", "{rooftop}", "{city}",
-        "{items}", "{amount}",
+        "{items}", "{amount}", "{booking_link}",
+    ],
+    "payment_reminder": [
+        # Напоминание оплатить бронь, когда осталось < 25% времени.
+        # minutes_left — сколько минут осталось до истечения брони (целое число).
+        "{full_name}", "{movie}", "{starts_at}", "{rooftop}", "{city}",
+        "{items}", "{amount}", "{expires_at}", "{minutes_left}", "{booking_link}",
+    ],
+    "welcome_on_checkin": [
+        # Приветствие при сканировании QR / вводе кода брони — гость пришёл.
+        "{full_name}", "{movie}", "{starts_at}", "{ends_at}",
+        "{rooftop}", "{city}", "{rooftop_address}",
     ],
     "user_cancel_notice": [
         "{full_name}", "{movie}", "{starts_at}", "{rooftop}", "{reason}",

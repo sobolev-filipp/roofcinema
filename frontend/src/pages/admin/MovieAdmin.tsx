@@ -362,20 +362,20 @@ export default function MovieAdmin() {
             <h2 style={{ margin: 0 }}>{isNew ? "Новый фильм" : "Редактирование фильма"}</h2>
             {!isNew && <button type="button" className="ghost danger-on-hover" onClick={remove}>Удалить</button>}
           </div>
-          <div className="row gap" style={{ flexWrap: "wrap", marginTop: 16 }}>
-            <div className="field" style={{ flex: 2, minWidth: 220 }}>
+          <div className="row gap movie-form-row" style={{ flexWrap: "wrap", marginTop: 16, alignItems: "flex-end" }}>
+            <div className="field" style={{ flex: 2, minWidth: 220, marginBottom: 0 }}>
               <label>Название (на русском)</label>
               <input required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
             </div>
-            <div className="field" style={{ flex: 2, minWidth: 220 }}>
+            <div className="field" style={{ flex: 2, minWidth: 220, marginBottom: 0 }}>
               <label>Оригинальное название</label>
               <input value={form.original_title} onChange={(e) => setForm({ ...form, original_title: e.target.value })} />
             </div>
-            <div className="field" style={{ width: 110 }}>
+            <div className="field" style={{ width: 110, marginBottom: 0 }}>
               <label>Год</label>
               <input type="number" value={form.year} onChange={(e) => setForm({ ...form, year: e.target.value })} />
             </div>
-            <div className="field" style={{ width: 130 }}>
+            <div className="field" style={{ width: 130, marginBottom: 0 }}>
               <label>Длительность, мин *</label>
               <input
                 type="number"
@@ -387,17 +387,17 @@ export default function MovieAdmin() {
                 title="Обязательно — используется для авто-расчёта окончания показа"
               />
             </div>
-            <div className="field" style={{ width: 90 }}>
+            <div className="field" style={{ width: 90, marginBottom: 0 }}>
               <label>Возраст</label>
               <input placeholder="18+" value={form.age_rating} onChange={(e) => setForm({ ...form, age_rating: e.target.value })} />
             </div>
           </div>
-          <div className="row gap" style={{ flexWrap: "wrap" }}>
-            <div className="field" style={{ flex: 1, minWidth: 220 }}>
+          <div className="row gap movie-form-row" style={{ flexWrap: "wrap", marginTop: 16, alignItems: "flex-end" }}>
+            <div className="field" style={{ flex: 1, minWidth: 220, marginBottom: 0 }}>
               <label>Жанры (через запятую)</label>
               <input value={form.genres} onChange={(e) => setForm({ ...form, genres: e.target.value })} />
             </div>
-            <div className="field" style={{ flex: 1, minWidth: 220 }}>
+            <div className="field" style={{ flex: 1, minWidth: 220, marginBottom: 0 }}>
               <label>Режиссёр</label>
               <input value={form.director} onChange={(e) => setForm({ ...form, director: e.target.value })} />
             </div>

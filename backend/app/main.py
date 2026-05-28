@@ -9,8 +9,9 @@ from sqlalchemy.orm import Session
 
 from .config import get_settings
 from .db import Base, SessionLocal, engine
-from .email_service import send_booking_window_opened, send_post_show_receipt_pending_digest
-from .models import Booking, BookingTransfer, LoginCode, PostShowReceipt, Rooftop, Screening, ScreeningBookingNotify, User, UserRole
+from .email_service import send_booking_window_opened, send_post_show_receipt_pending_digest, send_template_email
+from .models import Booking, BookingItem, BookingStatus, BookingTransfer, LoginCode, MessageTemplate, PostShowReceipt, Rooftop, Screening, ScreeningBookingNotify, User, UserRole
+from .utils import render_template
 from .routers import (
     admin_bookings, admin_users, attendees, auth, bookings, cities, geocode, message_templates,
     movie_search, movies, payout_templates, post_show_receipts, receipts, refunds, rooftops,
@@ -150,6 +151,123 @@ async def _notify_loop():
 
 
 _POST_SHOW_PAID_STATUSES = ("paid", "paid_by_balance", "attended")
+
+
+def _items_text_for(b: Booking) -> str:
+    lines: list[str] = []
+    for it in b.items:
+        total = int(float(it.price_each) * it.qty)
+        lines.append(f"- {it.name} ×{it.qty} — {total} ₽")
+    return "\n".join(lines)
+
+
+def _render_template_for_booking(db, kind: str, b: Booking, extra: dict | None = None) -> str | None:
+    """Берёт дефолтный шаблон указанного kind, рендерит контекст брони. None если шаблона нет."""
+    tpl = (
+        db.query(MessageTemplate)
+        .filter(MessageTemplate.kind == kind, MessageTemplate.is_default.is_(True))
+        .first()
+    )
+    if not tpl:
+        tpl = db.query(MessageTemplate).filter(MessageTemplate.kind == kind).first()
+    if not tpl:
+        return None
+    s = b.screening
+    booking_link = f"{get_settings().APP_BASE_URL.rstrip('/')}/bookings/{b.id}"
+    starts_at = s.starts_at.strftime("%d.%m.%Y %H:%M") if s else ""
+    ends_at = ""
+    if s:
+        end_dt = s.ends_at
+        if end_dt is None and s.movie and s.movie.duration_min:
+            end_dt = s.starts_at + timedelta(minutes=int(s.movie.duration_min))
+        if end_dt:
+            ends_at = end_dt.strftime("%d.%m.%Y %H:%M")
+    ctx = {
+        "full_name": b.full_name,
+        "movie": s.movie.title if (s and s.movie) else "",
+        "starts_at": starts_at,
+        "ends_at": ends_at,
+        "rooftop": s.rooftop.name if (s and s.rooftop) else "",
+        "rooftop_address": (s.rooftop.address if (s and s.rooftop) else ""),
+        "city": (s.rooftop.city.name if (s and s.rooftop and s.rooftop.city) else ""),
+        "items": _items_text_for(b),
+        "amount": f"{int(float(b.total_amount))}",
+        "expires_at": b.expires_at.strftime("%d.%m.%Y %H:%M") if b.expires_at else "",
+        "booking_link": booking_link,
+    }
+    if extra:
+        ctx.update(extra)
+    return render_template(tpl.text, ctx)
+
+
+async def _payment_reminder_loop():
+    """Каждые 60с: для броней в waiting_payment, у которых остаётся <25% времени
+    и напоминание ещё не отправляли — шлём письмо."""
+    from datetime import datetime
+    while True:
+        try:
+            db = SessionLocal()
+            try:
+                now = datetime.utcnow()
+                waiting = (
+                    db.query(Booking)
+                    .options(
+                        joinedload(Booking.screening).joinedload(Screening.movie),
+                        joinedload(Booking.screening).joinedload(Screening.rooftop).joinedload(Rooftop.city),
+                        selectinload(Booking.items),
+                    )
+                    .filter(
+                        Booking.status == BookingStatus.waiting_payment.value,
+                        Booking.expires_at > now,
+                        Booking.payment_reminder_sent_at.is_(None),
+                    )
+                    .limit(500)
+                    .all()
+                )
+                changed = False
+                for b in waiting:
+                    s = b.screening
+                    if not s:
+                        continue
+                    window_min = int(s.booking_window_minutes or 120)
+                    total = timedelta(minutes=window_min)
+                    remaining = b.expires_at - now
+                    if remaining.total_seconds() <= 0:
+                        continue
+                    # < 25% оставшегося времени и > 0
+                    if remaining * 4 >= total:
+                        continue
+                    minutes_left = max(0, int(remaining.total_seconds() // 60))
+                    body = _render_template_for_booking(
+                        db, "payment_reminder", b,
+                        extra={"minutes_left": str(minutes_left)},
+                    )
+                    if not body:
+                        # Fallback-текст
+                        body = (
+                            f"Здравствуйте, {b.full_name}!\n\n"
+                            f"Время на оплату брони на «{s.movie.title if s.movie else ''}» истекает скоро. "
+                            f"Осталось около {int(remaining.total_seconds() // 60)} мин.\n\n"
+                            f"Подтвердить оплату: {get_settings().APP_BASE_URL.rstrip('/')}/bookings/{b.id}"
+                        )
+                    try:
+                        send_template_email(b.email, "Напоминание об оплате — Кино на крыше", body)
+                        b.payment_reminder_sent_at = datetime.utcnow()
+                        changed = True
+                    except Exception:
+                        log.exception("payment reminder send failed booking_id=%s", b.id)
+                if changed:
+                    db.commit()
+            finally:
+                db.close()
+        except Exception:
+            log.exception("payment_reminder_loop iteration failed")
+        await asyncio.sleep(60)
+
+
+# Импорт для использования внутри post_show loop без циклических импортов уже сделан выше;
+# joinedload/selectinload берём из sqlalchemy.orm
+from sqlalchemy.orm import selectinload  # noqa: E402
 
 
 async def _post_show_receipt_loop():
@@ -295,6 +413,8 @@ def _migrate_columns() -> None:
             conn.execute(text("ALTER TABLE bookings ADD COLUMN needs_post_show_receipt BOOLEAN NOT NULL DEFAULT 0"))
         if "post_show_admin_notified_at" not in bc:
             conn.execute(text("ALTER TABLE bookings ADD COLUMN post_show_admin_notified_at DATETIME"))
+        if "payment_reminder_sent_at" not in bc:
+            conn.execute(text("ALTER TABLE bookings ADD COLUMN payment_reminder_sent_at DATETIME"))
         # screenings: ends_at — локальное наивное время окончания показа
         sc = cols("screenings")
         if "ends_at" not in sc:
@@ -316,10 +436,11 @@ async def lifespan(app: FastAPI):
     ws_manager.set_loop(asyncio.get_running_loop())
     notify_task = asyncio.create_task(_notify_loop())
     post_show_task = asyncio.create_task(_post_show_receipt_loop())
+    reminder_task = asyncio.create_task(_payment_reminder_loop())
     try:
         yield
     finally:
-        for t in (notify_task, post_show_task):
+        for t in (notify_task, post_show_task, reminder_task):
             t.cancel()
             try:
                 await t

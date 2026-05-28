@@ -352,6 +352,8 @@ ALLOWED_TEMPLATE_KINDS = (
     "pre_booking_info",
     "post_payment",
     "post_show_receipt",
+    "payment_reminder",
+    "welcome_on_checkin",
     "user_cancel_notice",
     "admin_cancel_screening",
     "refund_link",

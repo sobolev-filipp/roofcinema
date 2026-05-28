@@ -34,7 +34,9 @@ type PostShowBooking = {
   screening: {
     id: number | null;
     starts_at: string | null;
+    ends_at: string | null;
     movie_title: string | null;
+    movie_duration_min: number | null;
     rooftop_name: string | null;
     city_name: string | null;
   } | null;
@@ -393,6 +395,74 @@ function PostShowReceipts({ onChange }: { onChange?: () => void }) {
           {items.map((b) => {
             const isBusy = busyId === b.id;
             const sentAt = b.post_show_receipt?.sent_at ?? null;
+            const fileUploaded = !!b.post_show_receipt?.file_url;
+            // Расчётное окончание показа — backend уже его прислал
+            const endsAt = b.screening?.ends_at ? new Date(b.screening.ends_at) : null;
+            const showEnded = endsAt ? endsAt.getTime() <= Date.now() : false;
+
+            // Визуальный статус
+            let statusBlock: JSX.Element;
+            if (sentAt) {
+              statusBlock = (
+                <div className="psr-status psr-status-sent">
+                  <span className="psr-status-icon">✓</span>
+                  <div>
+                    <div className="psr-status-title">Чек отправлен</div>
+                    <div className="psr-status-sub">{fmt(sentAt)} → {b.email}</div>
+                  </div>
+                </div>
+              );
+            } else if (fileUploaded && !showEnded) {
+              statusBlock = (
+                <div className="psr-status psr-status-queued">
+                  <span className="psr-status-icon">⏳</span>
+                  <div>
+                    <div className="psr-status-title">Чек загружен — ждёт окончания показа</div>
+                    <div className="psr-status-sub">
+                      Письмо уйдёт автоматически {endsAt ? `≈ ${fmt(endsAt.toISOString())}` : "после окончания"} на {b.email}
+                    </div>
+                  </div>
+                </div>
+              );
+            } else if (fileUploaded && showEnded) {
+              statusBlock = (
+                <div className="psr-status psr-status-pending-send">
+                  <span className="psr-status-icon">📨</span>
+                  <div>
+                    <div className="psr-status-title">Чек загружен — отправится в ближайшие минуты</div>
+                    <div className="psr-status-sub">
+                      Показ закончился. Автоотправка проходит раз в 5 минут.
+                    </div>
+                  </div>
+                </div>
+              );
+            } else if (!fileUploaded && showEnded) {
+              statusBlock = (
+                <div className="psr-status psr-status-overdue">
+                  <span className="psr-status-icon">⚠</span>
+                  <div>
+                    <div className="psr-status-title">Чек не загружен — показ уже закончился</div>
+                    <div className="psr-status-sub">
+                      Загрузите файл — письмо уйдёт сразу.
+                    </div>
+                  </div>
+                </div>
+              );
+            } else {
+              // file не загружен, показ ещё не прошёл
+              statusBlock = (
+                <div className="psr-status psr-status-waiting">
+                  <span className="psr-status-icon">📎</span>
+                  <div>
+                    <div className="psr-status-title">Чек ещё не загружен</div>
+                    <div className="psr-status-sub">
+                      Загрузите файл до окончания показа{endsAt ? ` (${fmt(endsAt.toISOString())})` : ""} — он отправится автоматически.
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+
             return (
               <div key={b.id} className="card receipt-card">
                 <div className="receipt-meta" style={{ padding: 0 }}>
@@ -427,24 +497,24 @@ function PostShowReceipts({ onChange }: { onChange?: () => void }) {
                     {Number(b.total_amount).toFixed(0)} ₽
                   </div>
 
-                  {sentAt ? (
-                    <>
-                      <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>
-                        ✓ Отправлено {fmt(sentAt)}
-                      </div>
-                      {b.post_show_receipt?.file_url && (
-                        <a
-                          href={b.post_show_receipt.file_url}
-                          target="_blank"
-                          rel="noopener"
-                          className="rooftop-link"
-                          style={{ fontSize: 12 }}
-                        >
-                          Открыть чек ↗
-                        </a>
-                      )}
-                    </>
-                  ) : (
+                  {/* Визуальный статус (один из 5 возможных вариантов) */}
+                  <div style={{ marginTop: 12 }}>{statusBlock}</div>
+
+                  {/* Ссылка на загруженный файл — есть для всех загруженных */}
+                  {fileUploaded && b.post_show_receipt?.file_url && (
+                    <a
+                      href={b.post_show_receipt.file_url}
+                      target="_blank"
+                      rel="noopener"
+                      className="rooftop-link"
+                      style={{ fontSize: 12, display: "inline-block", marginTop: 8 }}
+                    >
+                      📄 Открыть файл чека ↗
+                    </a>
+                  )}
+
+                  {/* Кнопка загрузки — пока чек не отправлен */}
+                  {!sentAt && (
                     <div className="row gap" style={{ marginTop: 12, flexWrap: "wrap" }}>
                       <input
                         ref={(el) => { fileInputs.current[b.id] = el; }}
@@ -463,7 +533,9 @@ function PostShowReceipts({ onChange }: { onChange?: () => void }) {
                         disabled={isBusy}
                       >
                         {isBusy && <Spinner />}
-                        {isBusy ? "Сохраняем..." : "📎 Загрузить и сохранить"}
+                        {isBusy
+                          ? "Сохраняем..."
+                          : (fileUploaded ? "📎 Заменить файл" : "📎 Загрузить и сохранить")}
                       </button>
                     </div>
                   )}

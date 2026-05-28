@@ -57,7 +57,10 @@ def _expire_overdue(db: Session) -> None:
 
     Брони с pending-чеком НЕ истекают: их таймер «на паузе» до решения админа.
     Эффективно пауза реализована тем, что при reject мы продлеваем expires_at
-    на длительность проверки чека (см. receipts.reject_receipt)."""
+    на длительность проверки чека (см. receipts.reject_receipt).
+
+    После пометки шлём WS-broadcast по каждому показу, чтобы открытые админ-вкладки
+    обновили таблицу без ручного refresh."""
     now = datetime.utcnow()
     overdue = (
         db.query(Booking)
@@ -70,9 +73,16 @@ def _expire_overdue(db: Session) -> None:
     )
     if not overdue:
         return
+    expired_ids: list[tuple[int, int]] = []  # [(screening_id, booking_id), ...]
     for b in overdue:
         b.status = BookingStatus.expired.value
+        expired_ids.append((b.screening_id, b.id))
     db.commit()
+    for scr_id, b_id in expired_ids:
+        try:
+            _broadcast(scr_id, "updated", b_id)
+        except Exception:
+            pass
 
 
 def _stock_used(db: Session, sst_id: int) -> int:

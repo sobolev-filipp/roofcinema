@@ -1,16 +1,20 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type Movie } from "../../api";
+import { Skeleton } from "../../components/Loaders";
 import { useDebouncedValue } from "../../lib/hooks";
 
 export default function MoviesAdmin() {
   const [movies, setMovies] = useState<Movie[]>([]);
   const [q, setQ] = useState("");
   const debQ = useDebouncedValue(q, 300);
+  const [loading, setLoading] = useState(true);
 
   async function reload() {
+    setLoading(true);
     const url = debQ.trim() ? `/api/movies?q=${encodeURIComponent(debQ.trim())}` : "/api/movies";
     try { setMovies(await api.get<Movie[]>(url)); } catch {}
+    setLoading(false);
   }
   useEffect(() => { reload(); }, [debQ]); // eslint-disable-line
 
@@ -29,7 +33,11 @@ export default function MoviesAdmin() {
         </div>
       </div>
 
-      {movies.length === 0 ? (
+      {loading ? (
+        <div className="movies-grid" style={{ marginTop: 16 }}>
+          <Skeleton variant="thumb" count={4} />
+        </div>
+      ) : movies.length === 0 ? (
         <div className="empty" style={{ marginTop: 16 }}>
           {debQ.trim() ? "Ничего не нашлось. Можно добавить вручную." : "Пока нет фильмов."}
         </div>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type PayoutTemplate } from "../../api";
+import { Skeleton } from "../../components/Loaders";
 import { useUI } from "../../ui";
 
 const empty = {
@@ -12,9 +13,12 @@ export default function PayoutTemplatesAdmin() {
   const [form, setForm] = useState(empty);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   async function reload() {
+    setLoading(true);
     try { setList(await api.get<PayoutTemplate[]>("/api/payout-templates")); } catch {}
+    setLoading(false);
   }
   useEffect(() => { reload(); }, []);
 
@@ -107,6 +111,11 @@ export default function PayoutTemplatesAdmin() {
         </div>
       </form>
 
+      {loading ? (
+        <div className="cards-grid" style={{ marginTop: 16 }}>
+          <Skeleton variant="card" count={3} />
+        </div>
+      ) : (
       <div className="cards-grid" style={{ marginTop: 16 }}>
         {list.map((t) => (
           <div key={t.id} className="card">
@@ -125,6 +134,7 @@ export default function PayoutTemplatesAdmin() {
         ))}
         {list.length === 0 && <div className="empty">Шаблонов пока нет.</div>}
       </div>
+      )}
     </div>
   );
 }

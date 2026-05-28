@@ -204,6 +204,11 @@ def send_email_with_attachment(
         return False
 
 
+def send_template_email(to: str, subject: str, body_text: str) -> bool:
+    """Простой обёртчик над send_email для шаблонных писем (без HTML/вложений)."""
+    return send_email(to, subject, body_text)
+
+
 def send_post_show_receipt_pending_digest(
     admin_email: str,
     pending: list[dict],

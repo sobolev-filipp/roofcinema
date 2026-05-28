@@ -539,7 +539,7 @@ git push origin main
 **Шаг 3 - Если нужно перезагрузить сервер
 
 ```bash
-systemctl restart roofcinema
+Н
 ```
 
 База данных, загруженные файлы и `.env` не затрагиваются.
