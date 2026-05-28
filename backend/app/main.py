@@ -182,6 +182,22 @@ def _render_template_for_booking(db, kind: str, b: Booking, extra: dict | None =
             end_dt = s.starts_at + timedelta(minutes=int(s.movie.duration_min))
         if end_dt:
             ends_at = end_dt.strftime("%d.%m.%Y %H:%M")
+    # Реквизиты для оплаты — из назначенного на показ payout_template
+    payout_details = ""
+    if s and s.payout_template:
+        pt = s.payout_template
+        lines: list[str] = []
+        if pt.recipient_name:
+            lines.append(f"Получатель: {pt.recipient_name}")
+        if pt.card_number:
+            lines.append(f"Карта: {pt.card_number}")
+        if pt.phone:
+            lines.append(f"Телефон (СБП): {pt.phone}")
+        if pt.bank_name:
+            lines.append(f"Банк: {pt.bank_name}")
+        if pt.note:
+            lines.append(pt.note)
+        payout_details = "\n".join(lines)
     ctx = {
         "full_name": b.full_name,
         "movie": s.movie.title if (s and s.movie) else "",
@@ -194,6 +210,7 @@ def _render_template_for_booking(db, kind: str, b: Booking, extra: dict | None =
         "amount": f"{int(float(b.total_amount))}",
         "expires_at": b.expires_at.strftime("%d.%m.%Y %H:%M") if b.expires_at else "",
         "booking_link": booking_link,
+        "payout_details": payout_details,
     }
     if extra:
         ctx.update(extra)
@@ -214,6 +231,7 @@ async def _payment_reminder_loop():
                     .options(
                         joinedload(Booking.screening).joinedload(Screening.movie),
                         joinedload(Booking.screening).joinedload(Screening.rooftop).joinedload(Rooftop.city),
+                        joinedload(Booking.screening).joinedload(Screening.payout_template),
                         selectinload(Booking.items),
                     )
                     .filter(

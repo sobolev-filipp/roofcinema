@@ -105,8 +105,10 @@ TEMPLATE_PLACEHOLDERS: dict[str, list[str]] = {
     "payment_reminder": [
         # Напоминание оплатить бронь, когда осталось < 25% времени.
         # minutes_left — сколько минут осталось до истечения брони (целое число).
+        # payout_details — реквизиты для оплаты (получатель/карта/СБП/банк, каждый на отдельной строке).
         "{full_name}", "{movie}", "{starts_at}", "{rooftop}", "{city}",
-        "{items}", "{amount}", "{expires_at}", "{minutes_left}", "{booking_link}",
+        "{items}", "{amount}", "{expires_at}", "{minutes_left}",
+        "{payout_details}", "{booking_link}",
     ],
     "welcome_on_checkin": [
         # Приветствие при сканировании QR / вводе кода брони — гость пришёл.
