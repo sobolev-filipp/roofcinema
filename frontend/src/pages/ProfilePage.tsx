@@ -92,8 +92,8 @@ export default function ProfilePage() {
           <span className="pl-arrow">→</span>
         </Link>
 
-        {/* Внешний вид — переключатель темы */}
-        <div className="profile-link-card card" style={{ cursor: "default" }}>
+        {/* Внешний вид — переключатель темы (настройка, не ссылка) */}
+        <div className="card profile-setting-card">
           <div style={{ flex: 1 }}>
             <div className="pl-title">Внешний вид</div>
             <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>

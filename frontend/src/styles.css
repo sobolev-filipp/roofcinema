@@ -676,7 +676,9 @@ label {
 }
 
 @media (max-width: 879px) {
-  /* Сама панель */
+  /* Сама панель. Высота ЯВНО фиксированная (56px интерактивной зоны + safe-area
+     снизу), чтобы при показе/скрытии тулбара браузера на iOS высота не «прыгала».
+     box-sizing: border-box — safe-area-отступ входит внутрь заданной высоты. */
   .bottom-nav {
     display: flex;
     position: fixed;
@@ -684,18 +686,18 @@ label {
     left: 0;
     right: 0;
     z-index: var(--z-header);
+    height: calc(56px + env(safe-area-inset-bottom));
+    box-sizing: border-box;
+    padding-bottom: env(safe-area-inset-bottom);
     background: rgba(12, 12, 20, 0.97);
     backdrop-filter: saturate(160%) blur(16px);
     -webkit-backdrop-filter: saturate(160%) blur(16px);
     border-top: 1px solid var(--border);
-    /* Отступ снизу = safe-area (iOS home-indicator). Фон панели растягивается
-       до самого низа экрана, иконки приподнимаются над home-баром. */
-    padding-bottom: env(safe-area-inset-bottom);
     justify-content: space-around;
     align-items: stretch;
   }
 
-  /* Каждая вкладка — компактная, без лишнего воздуха */
+  /* Каждая вкладка — компактная, по центру, занимает всю высоту панели */
   .bnav-item {
     display: flex;
     flex-direction: column;
@@ -704,7 +706,8 @@ label {
     gap: 2px;
     flex: 1;
     min-width: 0;
-    padding: 6px 4px 5px;
+    height: 56px;       /* интерактивная зона над safe-area */
+    padding: 0 4px;
     color: var(--text-faint);
     font-size: 10px;
     font-weight: 500;
@@ -719,11 +722,10 @@ label {
   .bnav-item svg { flex-shrink: 0; transition: transform 0.15s; }
   .bnav-item.active svg { transform: scale(1.08); }
 
-  /* Основной контент получает отступ снизу, чтобы кнопки в карточках
-     не оказывались под панелью и были удобны для тапа.
-     Запас 78px учитывает: ~50px содержимое + 28px клиренс. */
+  /* Основной контент получает отступ снизу, чтобы кнопки в последней карточке
+     не прятались под панелью. 56px высота панели + 24px воздуха + safe-area. */
   body:has(.bottom-nav) {
-    padding-bottom: calc(78px + env(safe-area-inset-bottom));
+    padding-bottom: calc(80px + env(safe-area-inset-bottom));
   }
 }
 
@@ -988,7 +990,7 @@ label {
 @media (min-width: 420px) { .movies-grid { grid-template-columns: repeat(2, 1fr); } }
 @media (min-width: 600px) { .movies-grid { grid-template-columns: repeat(3, 1fr); gap: var(--s-4); } }
 @media (min-width: 880px) { .movies-grid { grid-template-columns: repeat(4, 1fr); } }
-@media (min-width: 1200px) { .movies-grid { grid-template-columns: repeat(5, 1fr); } }
+@media (min-width: 1200px) { .movies-grid { grid-template-columns: repeat(4, 1fr); } }
 
 .movie-card {
   background: var(--bg-card);
@@ -1040,6 +1042,10 @@ label {
 .rating-badge {
   display: inline-flex;
   align-items: baseline;
+  /* Число слева, метка справа; фиксированная ширина — чтобы IMDb и КП
+     были одинаковыми по ширине и аккуратно выравнивались в столбик. */
+  justify-content: space-between;
+  min-width: 64px;
   font-size: var(--fs-xs);
   padding: 3px 7px;
   background: rgba(0, 0, 0, 0.78);
@@ -1050,7 +1056,7 @@ label {
   box-shadow: var(--shadow-sm);
 }
 .rating-badge b { font-weight: 700; font-size: 12px; }
-.rb-label { opacity: 0.6; margin-left: 3px; font-size: 9px; font-weight: 500; }
+.rb-label { opacity: 0.6; margin-left: 6px; font-size: 9px; font-weight: 500; }
 
 .age-badge {
   position: absolute;
@@ -1515,6 +1521,12 @@ label {
 }
 .pl-title { font-weight: 600; font-size: var(--fs-base); }
 .pl-arrow { font-size: var(--fs-xl); color: var(--text-dim); }
+
+/* Карточка-настройка в профиле (не кликабельная целиком — без hover-подъёма) */
+.profile-setting-card {
+  display: flex;
+  align-items: flex-start;
+}
 
 /* =========================================================================
    APPLE WALLET — ТИКЕТЫ

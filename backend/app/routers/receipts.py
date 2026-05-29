@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 
 from ..db import get_db
 from ..deps import get_current_user, require_admin_or_super, require_perm
-from ..email_service import send_payment_approved, send_payment_rejected
+from ..email_service import send_payment_rejected
 from ..models import (
     Booking,
     BookingStatus,
@@ -277,10 +277,10 @@ def approve_receipt(
 
     _broadcast(b.screening_id, b.id)
 
-    starts_at_text = b.screening.starts_at.strftime("%d.%m.%Y %H:%M") if b.screening else ""
-    movie_title = b.screening.movie.title if b.screening and b.screening.movie else ""
+    # Письмо «После оплаты» по шаблону post_payment (с QR, кодом, составом и т.д.)
     try:
-        send_payment_approved(b.email, movie_title, starts_at_text, b.id, b.short_code)
+        from ..booking_notify import send_post_payment_email
+        send_post_payment_email(db, b)
     except Exception:
         pass
 

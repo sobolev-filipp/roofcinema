@@ -27,7 +27,12 @@ class Settings(BaseSettings):
     SMTP_USER: str = ""
     SMTP_PASSWORD: str = ""
     SMTP_FROM: str = "noreply@roofcinema.app"
+    # STARTTLS на обычном соединении (порт 587). Для implicit SSL (порт 465)
+    # используйте SMTP_USE_SSL=true — тогда STARTTLS не применяется.
     SMTP_USE_TLS: bool = True
+    # Implicit TLS/SSL с момента подключения (порт 465). Если не задан явно —
+    # авто-включается, когда SMTP_PORT == 465.
+    SMTP_USE_SSL: bool = False
     APP_BASE_URL: str = "http://127.0.0.1:5180"
 
     @property

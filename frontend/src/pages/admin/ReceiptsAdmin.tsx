@@ -399,6 +399,9 @@ function PostShowReceipts({ onChange }: { onChange?: () => void }) {
             // Расчётное окончание показа — backend уже его прислал
             const endsAt = b.screening?.ends_at ? new Date(b.screening.ends_at) : null;
             const showEnded = endsAt ? endsAt.getTime() <= Date.now() : false;
+            const endsAtText = endsAt
+              ? endsAt.toLocaleString("ru-RU", { dateStyle: "medium", timeStyle: "short" })
+              : null;
 
             // Визуальный статус
             let statusBlock: JSX.Element;
@@ -419,7 +422,7 @@ function PostShowReceipts({ onChange }: { onChange?: () => void }) {
                   <div>
                     <div className="psr-status-title">Чек загружен — ждёт окончания показа</div>
                     <div className="psr-status-sub">
-                      Письмо уйдёт автоматически {endsAt ? `≈ ${fmt(endsAt.toISOString())}` : "после окончания"} на {b.email}
+                      Письмо уйдёт автоматически {endsAtText ? `≈ ${endsAtText}` : "после окончания"} на {b.email}
                     </div>
                   </div>
                 </div>
@@ -456,7 +459,7 @@ function PostShowReceipts({ onChange }: { onChange?: () => void }) {
                   <div>
                     <div className="psr-status-title">Чек ещё не загружен</div>
                     <div className="psr-status-sub">
-                      Загрузите файл до окончания показа{endsAt ? ` (${fmt(endsAt.toISOString())})` : ""} — он отправится автоматически.
+                      Загрузите файл до окончания показа{endsAtText ? ` (${endsAtText})` : ""} — он отправится автоматически.
                     </div>
                   </div>
                 </div>

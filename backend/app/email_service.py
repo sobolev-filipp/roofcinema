@@ -17,6 +17,25 @@ from .config import get_settings
 log = logging.getLogger("email")
 
 
+def _open_smtp(s, timeout: int = 30):
+    """Открывает SMTP-соединение с правильным режимом шифрования.
+
+    - порт 465 или SMTP_USE_SSL=true → implicit SSL (SMTP_SSL, без STARTTLS);
+    - иначе обычный SMTP + STARTTLS (если SMTP_USE_TLS=true), типично порт 587.
+
+    Логинится, если задан SMTP_USER. Возвращает готовый к sendmail объект."""
+    use_ssl = bool(getattr(s, "SMTP_USE_SSL", False)) or int(s.SMTP_PORT) == 465
+    if use_ssl:
+        smtp = smtplib.SMTP_SSL(s.SMTP_HOST, s.SMTP_PORT, timeout=timeout)
+    else:
+        smtp = smtplib.SMTP(s.SMTP_HOST, s.SMTP_PORT, timeout=timeout)
+        if s.SMTP_USE_TLS:
+            smtp.starttls()
+    if s.SMTP_USER:
+        smtp.login(s.SMTP_USER, s.SMTP_PASSWORD)
+    return smtp
+
+
 def send_email(to: str, subject: str, body_text: str, body_html: str | None = None) -> bool:
     """Отправляет письмо. Возвращает True если отправили (или вывели в консоль)."""
     s = get_settings()
@@ -35,11 +54,7 @@ def send_email(to: str, subject: str, body_text: str, body_html: str | None = No
         if body_html:
             msg.attach(MIMEText(body_html, "html", "utf-8"))
 
-        with smtplib.SMTP(s.SMTP_HOST, s.SMTP_PORT, timeout=15) as smtp:
-            if s.SMTP_USE_TLS:
-                smtp.starttls()
-            if s.SMTP_USER:
-                smtp.login(s.SMTP_USER, s.SMTP_PASSWORD)
+        with _open_smtp(s) as smtp:
             smtp.sendmail(s.SMTP_FROM, [to], msg.as_string())
         return True
     except Exception as e:
@@ -192,11 +207,7 @@ def send_email_with_attachment(
         )
         msg.attach(part)
 
-        with smtplib.SMTP(s.SMTP_HOST, s.SMTP_PORT, timeout=30) as smtp:
-            if s.SMTP_USE_TLS:
-                smtp.starttls()
-            if s.SMTP_USER:
-                smtp.login(s.SMTP_USER, s.SMTP_PASSWORD)
+        with _open_smtp(s) as smtp:
             smtp.sendmail(s.SMTP_FROM, [to], msg.as_string())
         return True
     except Exception as e:

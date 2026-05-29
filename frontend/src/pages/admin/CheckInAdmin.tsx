@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api, type CheckInConfirmOut, type CheckInInfo } from "../../api";
+import { ProjectorLoader } from "../../components/Loaders";
 
 // qr-scanner — lazy import, грузится только если есть камера
 type QrScannerType = import("qr-scanner").default;
@@ -117,13 +118,18 @@ export default function CheckInAdmin() {
     if (!trimmed) return;
     setPhase("looking");
     setCode(trimmed);
+    // Минимальная длительность анимации проектора, чтобы её было видно
+    // даже при моментальном ответе сервера.
+    const minDelay = new Promise((res) => setTimeout(res, 800));
     try {
-      const result = await api.get<CheckInInfo>(
-        `/api/admin/check-in/lookup?code=${encodeURIComponent(trimmed)}`,
-      );
+      const [result] = await Promise.all([
+        api.get<CheckInInfo>(`/api/admin/check-in/lookup?code=${encodeURIComponent(trimmed)}`),
+        minDelay,
+      ]);
       setInfo(result);
       setPhase("preview");
     } catch (e: any) {
+      await minDelay;
       setErrMsg(e.message || "Ошибка запроса");
       setPhase("error");
     }
@@ -289,14 +295,10 @@ export default function CheckInAdmin() {
     );
   }
 
-  // ─── Looking (загрузка) ───────────────────────────────────────────
+  // ─── Looking (загрузка) — кино-проектор ───────────────────────────
 
   if (phase === "looking") {
-    return (
-      <div className="checkin-wrap">
-        <div className="empty">Ищем код...</div>
-      </div>
-    );
+    return <ProjectorLoader text="Ищем бронь" />;
   }
 
   // ─── Idle (основной экран) ────────────────────────────────────────

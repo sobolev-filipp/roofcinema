@@ -412,16 +412,16 @@ export default function MovieAdmin() {
               <input value={form.trailer_url} onChange={(e) => setForm({ ...form, trailer_url: e.target.value })} />
             </div>
           </div>
-          <div className="row gap" style={{ flexWrap: "wrap" }}>
-            <div className="field" style={{ width: 140 }}>
+          <div className="row gap movie-form-row" style={{ flexWrap: "wrap", alignItems: "flex-end" }}>
+            <div className="field" style={{ width: 140, marginBottom: 0 }}>
               <label>IMDb ID</label>
               <input value={form.imdb_id} onChange={(e) => setForm({ ...form, imdb_id: e.target.value })} />
             </div>
-            <div className="field" style={{ width: 130 }}>
+            <div className="field" style={{ width: 130, marginBottom: 0 }}>
               <label>Рейтинг IMDb</label>
               <input type="number" step="0.1" value={form.imdb_rating} onChange={(e) => setForm({ ...form, imdb_rating: e.target.value })} />
             </div>
-            <div className="field" style={{ width: 130 }}>
+            <div className="field" style={{ width: 130, marginBottom: 0 }}>
               <label>Рейтинг Кинопоиска</label>
               <input type="number" step="0.1" value={form.kinopoisk_rating} onChange={(e) => setForm({ ...form, kinopoisk_rating: e.target.value })} />
             </div>

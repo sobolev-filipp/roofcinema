@@ -1,6 +1,7 @@
 """Бронирования: создание с таймером, авто-истечение, отмена."""
 from __future__ import annotations
 
+import logging
 import random
 import secrets
 from datetime import datetime, timedelta
@@ -30,6 +31,8 @@ from ..models import (
 from ..schemas import BookingCreateIn, BookingOut, BookingScreeningInfo, RefundBasicOut
 from ..utils import now_in_tz
 from ..ws_manager import manager
+
+log = logging.getLogger("bookings")
 
 
 def _broadcast(screening_id: int, event: str, booking_id: int) -> None:
@@ -479,6 +482,13 @@ def mark_paid_admin(booking_id: int, db: Session = Depends(get_db)):
     b.paid_at = datetime.utcnow()
     db.commit()
     _broadcast(b.screening_id, "updated", b.id)
+    # Письмо «После оплаты» по шаблону post_payment
+    try:
+        from ..booking_notify import send_post_payment_email
+        fresh = db.query(Booking).options(*_eager()).filter(Booking.id == b.id).first()
+        send_post_payment_email(db, fresh)
+    except Exception:
+        log.exception("post_payment email failed booking_id=%s", b.id)
     return _to_out(db.query(Booking).options(*_eager()).filter(Booking.id == b.id).first())
 
 
