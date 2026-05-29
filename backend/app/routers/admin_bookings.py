@@ -46,6 +46,7 @@ class UserSearchHit(BaseModel):
     social_url: str | None
     booking_count: int = 0
     last_booking_at: datetime | None = None
+    balance: float = 0  # баланс по этому email (единый кошелёк)
 
 
 @router.get("/users/search", response_model=list[UserSearchHit])
@@ -147,7 +148,44 @@ def search_users(q: str, db: Session = Depends(get_db), _admin: User = Depends(r
     result = list(seen.values())
     # сортировка: аккаунты выше, затем по числу прошлых броней
     result.sort(key=lambda r: (r["source"] != "user", -r["booking_count"], r.get("email") or ""))
-    return [UserSearchHit(**r) for r in result[:20]]
+    top = result[:20]
+    # Подтягиваем баланс по email (единый кошелёк)
+    from ..balance import get_balance
+    for r in top:
+        r["balance"] = get_balance(db, r.get("email"))
+    return [UserSearchHit(**r) for r in top]
+
+
+@router.get("/email-balance")
+def email_balance_lookup(
+    email: str,
+    db: Session = Depends(get_db),
+    _admin: User = Depends(require_perm("manual_booking")),
+):
+    """Баланс по произвольному email — для показа в ручном бронировании,
+    в т.ч. когда админ вводит почту вручную (а не выбирает из поиска)."""
+    from ..balance import get_balance
+    return {"email": email, "balance": get_balance(db, email)}
+
+
+@router.get("/bookings/by-email", response_model=list[BookingOut])
+def bookings_by_email(
+    email: str,
+    db: Session = Depends(get_db),
+    _admin: User = Depends(require_perm("manage_bookings")),
+):
+    """Все брони по email (для раздела «Клиенты»). Сортировка: сначала свежие."""
+    e = (email or "").strip().lower()
+    if not e:
+        return []
+    rows = (
+        db.query(Booking)
+        .options(*booking_eager())
+        .filter(func.lower(Booking.email) == e)
+        .order_by(Booking.created_at.desc())
+        .all()
+    )
+    return [booking_to_out(b) for b in rows]
 
 
 # === ручное создание брони админом ===
@@ -164,6 +202,7 @@ class AdminManualBookingIn(BaseModel):
     note: str | None = None
     mark_as_paid: bool = False  # если админ хочет сразу пометить оплаченной
     needs_post_show_receipt: bool = False  # отметить, что после показа нужен чек по email
+    use_balance: float = Field(default=0, ge=0)  # сколько списать с баланса (по email)
 
 
 def _gen_short_code(db: Session) -> str:
@@ -225,22 +264,46 @@ def manual_create_booking(
     total = sum(float(sst_map[it.screening_seat_type_id].price) * it.qty for it in payload.items)
     expires_at = datetime.utcnow() + timedelta(minutes=screening.booking_window_minutes)
 
+    email_norm = str(payload.email).strip()
+
+    # Оплата с баланса (по email). Списываем не больше доступного и не больше суммы брони.
+    from ..balance import debit_balance, get_balance
+    use_balance = float(payload.use_balance or 0)
+    if use_balance > 0:
+        available = get_balance(db, email_norm)
+        use_balance = min(use_balance, available, total)
+        if use_balance <= 0:
+            raise HTTPException(status_code=400, detail="На балансе этого email недостаточно средств")
+
+    # Определяем статус: полностью с баланса → paid_by_balance; иначе mark_as_paid → paid.
+    fully_by_balance = use_balance >= total - 1e-9
     now = datetime.utcnow()
+    if fully_by_balance:
+        status = BookingStatus.paid_by_balance.value
+        paid_at = now
+    elif payload.mark_as_paid:
+        status = BookingStatus.paid.value
+        paid_at = now
+    else:
+        status = BookingStatus.waiting_payment.value
+        paid_at = None
+
     booking = Booking(
         user_id=target_user.id if target_user else None,
         screening_id=screening.id,
         full_name=payload.full_name.strip(),
-        email=str(payload.email).strip(),
+        email=email_norm,
         phone=payload.phone,
         social_url=payload.social_url,
-        status=BookingStatus.paid.value if payload.mark_as_paid else BookingStatus.waiting_payment.value,
+        status=status,
         expires_at=expires_at,
         total_amount=total,
+        balance_used=use_balance,
         qr_token=secrets.token_urlsafe(32),
         short_code=_gen_short_code(db),
         note=payload.note,
         created_by_admin_id=admin.id,
-        paid_at=now if payload.mark_as_paid else None,
+        paid_at=paid_at,
         needs_post_show_receipt=payload.needs_post_show_receipt,
     )
     db.add(booking)
@@ -254,6 +317,9 @@ def manual_create_booking(
             price_each=float(sst.price),
             qty=it.qty,
         ))
+    # Списываем баланс уже после успешного создания брони
+    if use_balance > 0:
+        debit_balance(db, email_norm, use_balance)
     db.commit()
 
     # WS-событие для всех админов, смотрящих этот показ
@@ -266,6 +332,16 @@ def manual_create_booking(
         pass
 
     fresh = db.query(Booking).options(*booking_eager()).filter(Booking.id == booking.id).first()
+
+    # Если бронь сразу оплачена (отметили оплаченной или полностью с баланса) —
+    # шлём письмо «После оплаты» (с QR и кодом), как при подтверждении чека.
+    if fresh and fresh.status in (BookingStatus.paid.value, BookingStatus.paid_by_balance.value):
+        try:
+            from ..booking_notify import send_post_payment_email
+            send_post_payment_email(db, fresh)
+        except Exception:
+            pass
+
     return booking_to_out(fresh)
 
 

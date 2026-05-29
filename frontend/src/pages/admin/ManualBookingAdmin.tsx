@@ -40,12 +40,15 @@ export default function ManualBookingAdmin() {
   const [note, setNote] = useState("");
   const [markPaid, setMarkPaid] = useState(false);
   const [needsReceipt, setNeedsReceipt] = useState(false);
+  const [contactBalance, setContactBalance] = useState(0);   // баланс по email контакта
+  const [useBalance, setUseBalance] = useState(0);           // сколько списать с баланса
 
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   const [createdBooking, setCreatedBooking] = useState<Booking | null>(null);
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
+  const [postPayTemplates, setPostPayTemplates] = useState<MessageTemplate[]>([]);
   const [preInfoTemplates, setPreInfoTemplates] = useState<MessageTemplate[]>([]);
   const [cities, setCities] = useState<City[]>([]);
   const [copyStatus, setCopyStatus] = useState<string | null>(null);
@@ -55,6 +58,8 @@ export default function ManualBookingAdmin() {
     api.get<Screening[]>("/api/screenings?include_inactive=true").then(setScreenings);
     api.get<MessageTemplate[]>("/api/admin/message-templates?kind=manual_booking")
       .then(setTemplates).catch(() => setTemplates([]));
+    api.get<MessageTemplate[]>("/api/admin/message-templates?kind=post_payment")
+      .then(setPostPayTemplates).catch(() => setPostPayTemplates([]));
     api.get<MessageTemplate[]>("/api/admin/message-templates?kind=pre_booking_info")
       .then(setPreInfoTemplates).catch(() => setPreInfoTemplates([]));
     // Cities нужны для {city} плейсхолдера — в Screening.rooftop есть только city_id
@@ -91,9 +96,20 @@ export default function ManualBookingAdmin() {
       social_url: h.social_url ?? "",
       user_id: h.user_id,
     });
+    setContactBalance(h.balance || 0);  // баланс уже пришёл в результате поиска
     setShowHits(false);
     setUserQuery("");
   }
+
+  // Подтягиваем баланс по введённому email (в т.ч. если набрали вручную, а не выбрали из поиска).
+  const debouncedEmail = useDebouncedValue(contact.email.trim(), 400);
+  useEffect(() => {
+    const e = debouncedEmail;
+    if (!e || !e.includes("@")) { setContactBalance(0); return; }
+    api.get<{ balance: number }>(`/api/admin/email-balance?email=${encodeURIComponent(e)}`)
+      .then((r) => setContactBalance(r.balance || 0))
+      .catch(() => setContactBalance(0));
+  }, [debouncedEmail]);
 
   function setSeat(sstId: number, val: number) {
     setQty((q) => ({ ...q, [sstId]: Math.max(0, val) }));
@@ -108,6 +124,16 @@ export default function ManualBookingAdmin() {
     if (!screening) return 0;
     return screening.seats.reduce((sum, sst) => sum + (qty[sst.id] ?? 0) * Number(sst.price), 0);
   }, [qty, screening]);
+
+  // Сколько реально спишется с баланса и сколько останется доплатить «живыми» деньгами
+  const balanceApplied = Math.min(useBalance, contactBalance, totalAmount);
+  const fullyByBalance = totalAmount > 0 && balanceApplied >= totalAmount - 1e-9;
+  const externalDue = Math.max(0, totalAmount - balanceApplied);
+
+  // Полная оплата балансом → чек не нужен, чекбокс гасим
+  useEffect(() => {
+    if (fullyByBalance && needsReceipt) setNeedsReceipt(false);
+  }, [fullyByBalance]); // eslint-disable-line
 
   async function submit() {
     if (!screening) { setErr("Выберите показ"); return; }
@@ -131,6 +157,7 @@ export default function ManualBookingAdmin() {
         note: note.trim() || null,
         mark_as_paid: markPaid,
         needs_post_show_receipt: needsReceipt,
+        use_balance: Math.min(useBalance, contactBalance, totalAmount),
       });
       setCreatedBooking(b);
     } catch (e: any) { setErr(e.message); }
@@ -147,6 +174,8 @@ export default function ManualBookingAdmin() {
     setNote("");
     setMarkPaid(false);
     setNeedsReceipt(false);
+    setContactBalance(0);
+    setUseBalance(0);
     setCreatedBooking(null);
     setCopyStatus(null);
     setErr(null);
@@ -202,14 +231,22 @@ export default function ManualBookingAdmin() {
     }
   }
 
-  // отрисовка шаблона + копирование в буфер
+  const PAID_STATUSES = new Set(["paid", "paid_by_balance", "attended"]);
+  const qrImageUrl = (token: string) =>
+    `https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&qzone=1&color=111111&bgcolor=ffffff&data=${encodeURIComponent(token)}`;
+
+  // Копирование сообщения пользователю. Для оплаченной брони берём шаблон
+  // «После оплаты» (QR + код), для неоплаченной — «Ручное бронирование» (для оплаты).
   async function copyMessage() {
     if (!createdBooking) return;
-    const defaultTpl = templates.find((t) => t.is_default) ?? templates[0];
+    const isPaid = PAID_STATUSES.has(createdBooking.status);
+    const pool = isPaid ? postPayTemplates : templates;
+    const kindLabel = isPaid ? "После оплаты" : "Ручное бронирование";
+    const defaultTpl = pool.find((t) => t.is_default) ?? pool[0];
     if (!defaultTpl) {
       const ok = await confirm({
         title: "Нет шаблона",
-        message: "Создайте шаблон типа «Ручное бронирование» в разделе «Шаблоны».",
+        message: `Создайте шаблон типа «${kindLabel}» в разделе «Шаблоны».`,
         confirmText: "Перейти к шаблонам",
         cancelText: "Закрыть",
       });
@@ -217,15 +254,18 @@ export default function ManualBookingAdmin() {
       return;
     }
     const info = createdBooking.screening_info!;
-    const ctx = {
+    const ctx: Record<string, string> = {
       full_name: createdBooking.full_name,
       movie: info.movie_title,
       starts_at: fmt(info.starts_at),
       rooftop: info.rooftop_name,
       city: info.city_name,
+      rooftop_address: info.rooftop_address ?? "",
       amount: Number(createdBooking.total_amount).toFixed(0),
       booking_link: `${window.location.origin}/bookings/${createdBooking.id}`,
-      claim_link: "",  // у главного брони нет claim — используется booking_link
+      claim_link: "",
+      short_code: createdBooking.short_code,
+      qr_image_link: qrImageUrl(createdBooking.qr_token),
     };
     try {
       const res = await api.post<{ rendered: string }>("/api/admin/message-templates/preview", {
@@ -243,7 +283,14 @@ export default function ManualBookingAdmin() {
   // === результат после создания ===
   if (createdBooking) {
     const info = createdBooking.screening_info!;
-    const defaultTpl = templates.find((t) => t.is_default) ?? templates[0];
+    const isPaid = PAID_STATUSES.has(createdBooking.status);
+    const pool = isPaid ? postPayTemplates : templates;
+    const defaultTpl = pool.find((t) => t.is_default) ?? pool[0];
+    const statusLabel =
+      createdBooking.status === "paid_by_balance" ? "оплачено с баланса"
+      : createdBooking.status === "paid" ? "оплачено"
+      : createdBooking.status === "attended" ? "посетил"
+      : "ждёт оплаты";
     return (
       <div>
         <h2 style={{ marginTop: 16 }}>Бронь создана ✓</h2>
@@ -258,7 +305,7 @@ export default function ManualBookingAdmin() {
               </div>
               <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
                 код брони: {createdBooking.short_code} · {Number(createdBooking.total_amount).toFixed(0)} ₽ ·{" "}
-                статус: {createdBooking.status === "paid" ? "оплачено" : "ждёт оплаты"}
+                статус: {statusLabel}
               </div>
             </div>
             <Link to={`/bookings/${createdBooking.id}`} className="btn-as-link primary">
@@ -267,13 +314,24 @@ export default function ManualBookingAdmin() {
           </div>
         </div>
 
+        {isPaid && (
+          <div className="hint-box" style={{ marginTop: 12, borderColor: "var(--ok)", background: "rgba(46,204,113,0.10)" }}>
+            ✓ Бронь оплачена — письмо с QR-кодом и кодом входа уже отправлено на {createdBooking.email}.
+            При необходимости можно скопировать его текст ниже и продублировать в мессенджере.
+          </div>
+        )}
+
         <div className="card" style={{ marginTop: 12 }}>
-          <h3 style={{ marginTop: 0 }}>Сообщение пользователю</h3>
+          <h3 style={{ marginTop: 0 }}>
+            {isPaid ? "Сообщение «После оплаты» (QR + код)" : "Сообщение пользователю (для оплаты)"}
+          </h3>
           {defaultTpl ? (
             <>
               <p className="muted" style={{ fontSize: 13 }}>
                 Используется шаблон по умолчанию: <b>{defaultTpl.name}</b>.
-                Текст будет скопирован в буфер с подставленными данными — отправьте его в Telegram/WhatsApp/SMS.
+                {isPaid
+                  ? " Это то же письмо, что ушло на почту — можно скопировать и отправить вручную."
+                  : " Текст скопируется с подставленными данными — отправьте в Telegram/WhatsApp/SMS."}
               </p>
               <div className="row gap" style={{ marginTop: 10, flexWrap: "wrap", alignItems: "center" }}>
                 <button className="primary" onClick={copyMessage}>📋 Скопировать сообщение</button>
@@ -283,7 +341,7 @@ export default function ManualBookingAdmin() {
             </>
           ) : (
             <div className="hint-box">
-              Шаблона типа «Ручное бронирование» ещё нет.
+              Шаблона типа «{isPaid ? "После оплаты" : "Ручное бронирование"}» ещё нет.
               <Link to="/admin/templates" className="rooftop-link" style={{ marginLeft: 6 }}>
                 Создать в разделе «Шаблоны» →
               </Link>
@@ -402,6 +460,11 @@ export default function ManualBookingAdmin() {
                           {h.last_booking_at && ` · последняя ${fmt(h.last_booking_at)}`}
                         </div>
                       )}
+                      {h.balance > 0 && (
+                        <div style={{ fontSize: 11, marginTop: 2, color: "var(--ok)", fontWeight: 600 }}>
+                          баланс: {h.balance.toLocaleString("ru-RU")} ₽
+                        </div>
+                      )}
                     </button>
                   ))}
                 </div>
@@ -491,6 +554,49 @@ export default function ManualBookingAdmin() {
           {/* 4. Заметка + опции */}
           <div className="card" style={{ marginTop: 16 }}>
             <h3 style={{ marginTop: 0 }}>4. Подтверждение</h3>
+
+            {/* Оплата с баланса (по email). Показываем только если на балансе есть средства. */}
+            {contactBalance > 0 && totalAmount > 0 && (() => {
+              const maxFromBalance = Math.min(contactBalance, totalAmount);
+              const applied = Math.min(useBalance, maxFromBalance);
+              const left = Math.max(0, totalAmount - applied);
+              return (
+                <div className="hint-box" style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 13, marginBottom: 8 }}>
+                    На балансе <b>{contactBalance.toLocaleString("ru-RU")} ₽</b> (кошелёк {contact.email}).
+                    Можно оплатить часть или всё с баланса.
+                  </div>
+                  <div className="row gap" style={{ alignItems: "flex-end", flexWrap: "wrap" }}>
+                    <div className="field" style={{ width: 180, marginBottom: 0 }}>
+                      <label>Списать с баланса, ₽</label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={maxFromBalance}
+                        value={useBalance}
+                        onChange={(e) => setUseBalance(Math.max(0, Math.min(maxFromBalance, Number(e.target.value))))}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      className="ghost"
+                      onClick={() => setUseBalance(maxFromBalance)}
+                    >
+                      Всё ({maxFromBalance.toLocaleString("ru-RU")} ₽)
+                    </button>
+                    {useBalance > 0 && (
+                      <button type="button" className="ghost" onClick={() => setUseBalance(0)}>Сбросить</button>
+                    )}
+                  </div>
+                  <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+                    {applied >= totalAmount - 1e-9
+                      ? "Покрывает всю сумму — бронь сразу станет «оплачено с баланса»."
+                      : `С баланса: ${applied.toLocaleString("ru-RU")} ₽ · к доплате: ${left.toLocaleString("ru-RU")} ₽`}
+                  </div>
+                </div>
+              );
+            })()}
+
             <div className="field">
               <label>Внутренняя заметка (только для админа)</label>
               <textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
@@ -499,17 +605,28 @@ export default function ManualBookingAdmin() {
               <input type="checkbox" checked={markPaid} onChange={(e) => setMarkPaid(e.target.checked)} />
               <span>Сразу пометить оплаченной (оплата уже получена другим способом)</span>
             </label>
-            <label className="checkbox">
+            <label className="checkbox" style={fullyByBalance ? { opacity: 0.5 } : undefined}>
               <input
                 type="checkbox"
-                checked={needsReceipt}
+                checked={needsReceipt && !fullyByBalance}
+                disabled={fullyByBalance}
                 onChange={(e) => setNeedsReceipt(e.target.checked)}
               />
               <span>
                 Нужен чек на email после показа
-                <span className="muted" style={{ marginLeft: 6, fontSize: 12 }}>
-                  — появится в разделе «Чеки → Чеки для отправки»
-                </span>
+                {fullyByBalance ? (
+                  <span className="muted" style={{ marginLeft: 6, fontSize: 12 }}>
+                    — оплата полностью с баланса, чек не требуется
+                  </span>
+                ) : externalDue < totalAmount && externalDue > 0 ? (
+                  <span className="muted" style={{ marginLeft: 6, fontSize: 12 }}>
+                    — чек будет на доплаченную сумму {externalDue.toLocaleString("ru-RU")} ₽ (без части с баланса)
+                  </span>
+                ) : (
+                  <span className="muted" style={{ marginLeft: 6, fontSize: 12 }}>
+                    — появится в разделе «Чеки → Чеки для отправки»
+                  </span>
+                )}
               </span>
             </label>
             <div className="row gap" style={{ marginTop: 16, justifyContent: "flex-end" }}>

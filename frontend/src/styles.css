@@ -1660,15 +1660,22 @@ label {
   overflow-x: auto;
   overflow-y: hidden;
   flex-wrap: nowrap;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-  /* Плавная свайп-прокрутка на touch-устройствах */
+  /* Тонкий видимый скроллбар — подсказка, что вкладки можно прокручивать.
+     Колесо мыши и перетаскивание тоже работают (JS в AdminLayout). */
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
   -webkit-overflow-scrolling: touch;
   scroll-snap-type: x proximity;
-  /* Чтобы вкладки не цеплялись за вертикальный жест */
   touch-action: pan-x;
+  cursor: grab;
 }
-.admin-tabs::-webkit-scrollbar { display: none; }
+.admin-tabs:active { cursor: grabbing; }
+.admin-tabs::-webkit-scrollbar { height: 6px; }
+.admin-tabs::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 999px;
+}
+.admin-tabs::-webkit-scrollbar-track { background: transparent; }
 .admin-tab {
   padding: var(--s-3) var(--s-4);
   color: var(--text-dim);

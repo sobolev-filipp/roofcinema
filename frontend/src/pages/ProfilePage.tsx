@@ -1,6 +1,10 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
+import { api } from "../api";
 import { useAuth } from "../auth";
+import { Spinner } from "../components/Loaders";
 import { useTheme } from "../theme";
+import { useUI } from "../ui";
 
 const ROLE_LABEL: Record<string, string> = {
   super_admin: "Владелец",
@@ -9,9 +13,13 @@ const ROLE_LABEL: Record<string, string> = {
 };
 
 export default function ProfilePage() {
-  const { user } = useAuth();
+  const { user, refresh } = useAuth();
   const { theme, setTheme } = useTheme();
+  const { notify } = useUI();
+  const [refundOpen, setRefundOpen] = useState(false);
   if (!user) return null;
+
+  const balance = Number(user.balance);
 
   const initials = (user.full_name || user.email)
     .split(/\s+/)
@@ -64,10 +72,36 @@ export default function ProfilePage() {
       <div className="profile-stats">
         <div className="card stat-card">
           <div className="stat-label">Баланс</div>
-          <div className="stat-value">{Number(user.balance).toFixed(0)} <span style={{ fontSize: 16 }}>₽</span></div>
+          <div className="stat-value">{balance.toFixed(0)} <span style={{ fontSize: 16 }}>₽</span></div>
           <div className="muted" style={{ fontSize: 12 }}>Можно использовать для оплаты броней</div>
+          {balance > 0 && (
+            <button
+              type="button"
+              className="ghost btn-sm"
+              style={{ marginTop: 10 }}
+              onClick={() => setRefundOpen(true)}
+            >
+              Запросить возврат средств
+            </button>
+          )}
         </div>
       </div>
+
+      {refundOpen && (
+        <BalanceRefundModal
+          balance={balance}
+          onClose={() => setRefundOpen(false)}
+          onDone={async () => {
+            setRefundOpen(false);
+            await refresh();
+            await notify({
+              title: "Запрос отправлен",
+              message: "Заявка на возврат средств передана организатору. Деньги спишутся с баланса и будут переведены по указанным реквизитам.",
+              kind: "success",
+            });
+          }}
+        />
+      )}
 
       <div className="profile-links">
         <Link to="/bookings" className="profile-link-card card">
@@ -116,6 +150,78 @@ export default function ProfilePage() {
               </button>
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BalanceRefundModal({
+  balance, onClose, onDone,
+}: {
+  balance: number;
+  onClose: () => void;
+  onDone: () => void | Promise<void>;
+}) {
+  const { notify } = useUI();
+  const [fullName, setFullName] = useState("");
+  const [card, setCard] = useState("");
+  const [bank, setBank] = useState("");
+  const [comment, setComment] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    if (!fullName.trim() || card.trim().length < 4) {
+      await notify({ title: "Заполните поля", message: "Укажите ФИО и номер карты / телефон СБП.", kind: "error" });
+      return;
+    }
+    setBusy(true);
+    try {
+      await api.post("/api/me/balance-refund-request", {
+        payout_full_name: fullName.trim(),
+        payout_card_or_sbp: card.trim(),
+        payout_bank: bank.trim() || null,
+        payout_comment: comment.trim() || null,
+      });
+      await onDone();
+    } catch (e: any) {
+      await notify({ title: "Не удалось отправить", message: e.message, kind: "error" });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="ui-backdrop" role="dialog" aria-modal="true" onClick={onClose}>
+      <div className="ui-dialog" style={{ maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
+        <h3 className="ui-dialog-title">Возврат средств с баланса</h3>
+        <div className="ui-dialog-body">
+          К возврату: <b>{balance.toFixed(0)} ₽</b>. Укажите реквизиты — организатор переведёт
+          деньги вручную. После отправки сумма спишется с баланса.
+        </div>
+        <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+          <div className="field" style={{ margin: 0 }}>
+            <label>ФИО получателя *</label>
+            <input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Иванов Иван Иванович" />
+          </div>
+          <div className="field" style={{ margin: 0 }}>
+            <label>Карта или телефон СБП *</label>
+            <input value={card} onChange={(e) => setCard(e.target.value)} placeholder="2200 1234 5678 9012 или +7 999..." />
+          </div>
+          <div className="field" style={{ margin: 0 }}>
+            <label>Банк (необязательно)</label>
+            <input value={bank} onChange={(e) => setBank(e.target.value)} placeholder="Сбербанк, Тинькофф..." />
+          </div>
+          <div className="field" style={{ margin: 0 }}>
+            <label>Комментарий (необязательно)</label>
+            <input value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Например: переводить на СБП" />
+          </div>
+        </div>
+        <div className="ui-dialog-actions">
+          <button type="button" className="ghost" onClick={onClose} disabled={busy}>Отмена</button>
+          <button type="button" className="primary" onClick={submit} disabled={busy}>
+            {busy && <Spinner />}Запросить возврат
+          </button>
         </div>
       </div>
     </div>

@@ -22,6 +22,8 @@ import RefundsAdmin from "./pages/admin/RefundsAdmin";
 import CheckInAdmin from "./pages/admin/CheckInAdmin";
 import AdminsAdmin from "./pages/admin/AdminsAdmin";
 import StatisticsAdmin from "./pages/admin/StatisticsAdmin";
+import CancellationsAdmin from "./pages/admin/CancellationsAdmin";
+import CustomersAdmin from "./pages/admin/CustomersAdmin";
 import RefundPage from "./pages/RefundPage";
 import InstallPage from "./pages/InstallPage";
 import ProfilePage from "./pages/ProfilePage";
@@ -99,6 +101,8 @@ export default function App() {
                 <Route path="templates" element={<MessageTemplatesAdmin />} />
                 <Route path="manual-booking" element={<ManualBookingAdmin />} />
                 <Route path="refunds" element={<RefundsAdmin />} />
+                <Route path="cancellations" element={<CancellationsAdmin />} />
+                <Route path="customers" element={<CustomersAdmin />} />
                 <Route path="check-in" element={<CheckInAdmin />} />
                 <Route path="statistics" element={<StatisticsAdmin />} />
                 <Route path="admins" element={<AdminsAdmin />} />

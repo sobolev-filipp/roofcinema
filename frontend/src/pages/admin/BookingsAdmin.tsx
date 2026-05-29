@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { api, type Booking, type Screening } from "../../api";
+import { api, type Booking, type MessageTemplate, type Screening } from "../../api";
 import { Skeleton } from "../../components/Loaders";
 import { STATUS_COLOR, STATUS_LABELS, formatCountdown, msUntil } from "../../lib/bookingStatus";
 import { useBookingsWs } from "../../lib/useBookingsWs";
@@ -114,6 +114,39 @@ export default function BookingsAdmin() {
 
   const [extendModal, setExtendModal] = useState<{ b: Booking; minutes: number } | null>(null);
   const [transferModal, setTransferModal] = useState<{ b: Booking; target: number | null } | null>(null);
+  const [cancelScreeningModal, setCancelScreeningModal] = useState<{ reason: string; templateId: number | null } | null>(null);
+  const [cancellingScreening, setCancellingScreening] = useState(false);
+  const [cancelTemplates, setCancelTemplates] = useState<MessageTemplate[]>([]);
+
+  // Шаблоны письма «Отмена показа целиком» — для выбора в модалке отмены
+  useEffect(() => {
+    api.get<MessageTemplate[]>("/api/admin/message-templates?kind=admin_cancel_screening")
+      .then(setCancelTemplates).catch(() => setCancelTemplates([]));
+  }, []);
+
+  async function submitCancelScreening() {
+    if (!selectedScreening || !cancelScreeningModal) return;
+    setCancellingScreening(true);
+    try {
+      const res = await api.post<{ emails_sent: number; to_resolve: number }>(
+        `/api/admin/screenings/${selectedScreening.id}/cancel`,
+        { reason: cancelScreeningModal.reason.trim(), template_id: cancelScreeningModal.templateId },
+      );
+      setCancelScreeningModal(null);
+      await notify({
+        title: "Показ отменён",
+        message: `Письма отправлены: ${res.emails_sent}. Ожидают решения в разделе «Отмена показа»: ${res.to_resolve}.`,
+        kind: "success",
+      });
+      // показ ушёл в отменённые — сбросим выбор и обновим список
+      setScreeningId(null);
+      api.get<Screening[]>("/api/screenings?include_inactive=true").then(setScreenings);
+    } catch (e: any) {
+      await notify({ title: "Ошибка", message: e.message, kind: "error" });
+    } finally {
+      setCancellingScreening(false);
+    }
+  }
 
   async function extend(b: Booking) {
     setExtendModal({ b, minutes: 60 });
@@ -218,7 +251,12 @@ export default function BookingsAdmin() {
                 className={"screening-picker-item" + (s.id === screeningId ? " active" : "")}
                 onClick={() => setScreeningId(s.id)}
               >
-                <div className="sp-title">{s.movie.title}</div>
+                <div className="sp-title">
+                  {s.movie.title}
+                  {s.cancelled_at && (
+                    <span className="badge accent" style={{ marginLeft: 8, fontSize: 10 }}>отменён</span>
+                  )}
+                </div>
                 <div className="sp-meta">{fmt(s.starts_at)} · {s.rooftop.name}</div>
               </button>
             ))}
@@ -288,6 +326,62 @@ export default function BookingsAdmin() {
         </div>
       )}
 
+      {cancelScreeningModal && selectedScreening && (
+        <div className="ui-backdrop" role="dialog" aria-modal="true" onClick={() => !cancellingScreening && setCancelScreeningModal(null)}>
+          <div className="ui-dialog" style={{ maxWidth: 560 }} onClick={(e) => e.stopPropagation()}>
+            <h3 className="ui-dialog-title">Отменить показ целиком?</h3>
+            <div className="ui-dialog-body">
+              <b>{selectedScreening.movie.title}</b> · {fmt(selectedScreening.starts_at)} · {selectedScreening.rooftop.name}
+              <div style={{ marginTop: 8 }}>
+                Всем гостям уйдёт письмо об отмене. Оплаченные брони попадут в раздел
+                «Отмена показа» — там нужно будет по каждой выбрать: перенос, возврат на баланс
+                или возврат денег. Неоплаченные брони аннулируются автоматически.
+              </div>
+            </div>
+            <div className="field" style={{ marginTop: 12 }}>
+              <label>Шаблон письма</label>
+              {cancelTemplates.length === 0 ? (
+                <div className="muted" style={{ fontSize: 12 }}>
+                  Шаблон «Отмена показа целиком» не настроен — уйдёт стандартный текст.
+                  Создать можно в разделе «Шаблоны».
+                </div>
+              ) : (
+                <select
+                  value={cancelScreeningModal.templateId ?? ""}
+                  onChange={(e) => setCancelScreeningModal({
+                    ...cancelScreeningModal,
+                    templateId: e.target.value ? Number(e.target.value) : null,
+                  })}
+                >
+                  {cancelTemplates.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}{t.is_default ? " (по умолчанию)" : ""}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+            <div className="field">
+              <label>Причина (попадёт в письмо через {"{reason}"})</label>
+              <textarea
+                rows={2}
+                value={cancelScreeningModal.reason}
+                onChange={(e) => setCancelScreeningModal({ ...cancelScreeningModal, reason: e.target.value })}
+                placeholder="Например: дождь / технические причины"
+              />
+            </div>
+            <div className="ui-dialog-actions">
+              <button type="button" className="ghost" onClick={() => setCancelScreeningModal(null)} disabled={cancellingScreening}>
+                Назад
+              </button>
+              <button type="button" className="primary danger" onClick={submitCancelScreening} disabled={cancellingScreening}>
+                {cancellingScreening ? "Отменяем..." : "Отменить показ"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {selectedScreening && (
         <div className="card" style={{ marginTop: 16 }}>
           <div className="row between" style={{ flexWrap: "wrap", gap: 12 }}>
@@ -297,7 +391,22 @@ export default function BookingsAdmin() {
                 · {fmt(selectedScreening.starts_at)} · {selectedScreening.rooftop.name}
               </span>
             </h3>
-            <span className="muted" style={{ fontSize: 12 }}>обновляется в реальном времени</span>
+            <div className="row gap" style={{ alignItems: "center", flexWrap: "wrap" }}>
+              <span className="muted" style={{ fontSize: 12 }}>обновляется в реальном времени</span>
+              {selectedScreening.cancelled_at ? (
+                <span className="status-pill" style={{ color: "var(--err)" }}>Показ отменён</span>
+              ) : (
+                <button
+                  className="ghost danger-on-hover"
+                  onClick={() => setCancelScreeningModal({
+                    reason: "",
+                    templateId: cancelTemplates.find((t) => t.is_default)?.id ?? cancelTemplates[0]?.id ?? null,
+                  })}
+                >
+                  Отменить показ
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Статистика показа: занятость мест + выручка */}

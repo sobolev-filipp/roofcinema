@@ -144,13 +144,19 @@ export default function RefundsAdmin() {
                 {/* ── Левая колонка: инфо ── */}
                 <div style={{ flex: 1, minWidth: 240 }}>
                   <div style={{ fontWeight: 600, fontSize: 15 }}>
-                    <Link to={`/bookings/${r.booking_id}`} className="rooftop-link">
-                      #{r.booking_id} · {r.booking_full_name}
-                    </Link>
+                    {r.booking_id != null ? (
+                      <Link to={`/bookings/${r.booking_id}`} className="rooftop-link">
+                        #{r.booking_id} · {r.booking_full_name}
+                      </Link>
+                    ) : (
+                      <span>💰 Возврат с баланса · {r.booking_full_name}</span>
+                    )}
                   </div>
                   <div className="muted" style={{ fontSize: 12 }}>{r.booking_email}</div>
                   <div style={{ marginTop: 6, fontSize: 14 }}>
-                    {r.movie_title}{r.screening_starts_at ? ` · ${fmt(r.screening_starts_at)}` : ""} · {r.rooftop_name}
+                    {r.booking_id != null
+                      ? `${r.movie_title}${r.screening_starts_at ? ` · ${fmt(r.screening_starts_at)}` : ""} · ${r.rooftop_name}`
+                      : "Без привязки к брони"}
                   </div>
                   <div style={{ marginTop: 8, fontSize: 16, fontWeight: 700 }}>
                     {Number(r.amount).toFixed(0)} ₽
@@ -168,7 +174,7 @@ export default function RefundsAdmin() {
                   <button className="ghost" onClick={() => copyLink(r)}>
                     {copied === r.id ? "✓ Скопировано" : "📋 Скопировать ссылку"}
                   </button>
-                  {tab !== "completed" && (
+                  {tab !== "completed" && r.booking_id != null && (
                     <button className="ghost" onClick={() => resend(r)} disabled={busyId === r.id}>
                       ↻ Отправить ссылку на email
                     </button>

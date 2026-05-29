@@ -542,6 +542,14 @@ git push origin main
 systemctl restart roofcinema
 ```
 
+## Вариант Бэкап + деплой
+
+```bash
+ssh root@93.88.203.172
+cp /var/www/roofcinema/data/roofcinema.db /var/www/roofcinema/data/roofcinema.db.bak-$(date +%F)
+/var/www/roofcinema/deploy.sh
+```
+
 База данных, загруженные файлы и `.env` не затрагиваются.
 
 ---

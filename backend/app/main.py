@@ -13,9 +13,9 @@ from .email_service import send_booking_window_opened, send_post_show_receipt_pe
 from .models import Booking, BookingItem, BookingStatus, BookingTransfer, LoginCode, MessageTemplate, PostShowReceipt, Rooftop, Screening, ScreeningBookingNotify, User, UserRole
 from .utils import render_template
 from .routers import (
-    admin_bookings, admin_users, attendees, auth, bookings, cities, geocode, message_templates,
-    movie_search, movies, payout_templates, post_show_receipts, receipts, refunds, rooftops,
-    screening_notify, screenings, seat_types, statistics, uploads, users, ws,
+    admin_bookings, admin_users, attendees, auth, bookings, cancellations, cities, geocode,
+    message_templates, movie_search, movies, payout_templates, post_show_receipts, receipts,
+    refunds, rooftops, screening_notify, screenings, seat_types, statistics, uploads, users, ws,
 )
 from .security import hash_password
 from .utils import now_in_tz
@@ -433,11 +433,95 @@ def _migrate_columns() -> None:
             conn.execute(text("ALTER TABLE bookings ADD COLUMN post_show_admin_notified_at DATETIME"))
         if "payment_reminder_sent_at" not in bc:
             conn.execute(text("ALTER TABLE bookings ADD COLUMN payment_reminder_sent_at DATETIME"))
-        # screenings: ends_at — локальное наивное время окончания показа
+        if "needs_cancel_resolution" not in bc:
+            conn.execute(text("ALTER TABLE bookings ADD COLUMN needs_cancel_resolution BOOLEAN NOT NULL DEFAULT 0"))
+        # screenings: ends_at + cancelled_at
         sc = cols("screenings")
         if "ends_at" not in sc:
             conn.execute(text("ALTER TABLE screenings ADD COLUMN ends_at DATETIME"))
+        if "cancelled_at" not in sc:
+            conn.execute(text("ALTER TABLE screenings ADD COLUMN cancelled_at DATETIME"))
         conn.commit()
+
+    # refund_requests: возврат «с баланса» (без брони).
+    # Нужно: booking_id стал nullable + появилась колонка email.
+    # SQLite не умеет ALTER COLUMN — снимаем NOT NULL пересборкой таблицы.
+    with engine.connect() as conn:
+        rr_cols = inspect(engine).get_columns("refund_requests")
+        rr_names = {c["name"] for c in rr_cols}
+        booking_id_col = next((c for c in rr_cols if c["name"] == "booking_id"), None)
+        need_email = "email" not in rr_names
+        need_nullable = booking_id_col is not None and not booking_id_col["nullable"]
+        if need_nullable:
+            # Полная пересборка: новая таблица (booking_id nullable + email),
+            # копирование данных, замена. Индексы пересоздаём с каноничными именами.
+            conn.execute(text("PRAGMA foreign_keys=OFF"))
+            conn.execute(text("""
+                CREATE TABLE refund_requests_new (
+                    id INTEGER NOT NULL PRIMARY KEY,
+                    booking_id INTEGER,
+                    email VARCHAR(255),
+                    status VARCHAR(16) NOT NULL,
+                    payout_token VARCHAR(64) NOT NULL,
+                    amount NUMERIC(10, 2) NOT NULL,
+                    payout_full_name VARCHAR(255),
+                    payout_card_or_sbp VARCHAR(64),
+                    payout_bank VARCHAR(120),
+                    payout_comment TEXT,
+                    created_by_admin_id INTEGER,
+                    completed_by_admin_id INTEGER,
+                    created_at DATETIME NOT NULL,
+                    link_sent_at DATETIME,
+                    filled_at DATETIME,
+                    completed_at DATETIME,
+                    FOREIGN KEY(booking_id) REFERENCES bookings(id) ON DELETE CASCADE,
+                    FOREIGN KEY(created_by_admin_id) REFERENCES users(id),
+                    FOREIGN KEY(completed_by_admin_id) REFERENCES users(id)
+                )
+            """))
+            conn.execute(text("""
+                INSERT INTO refund_requests_new (
+                    id, booking_id, status, payout_token, amount,
+                    payout_full_name, payout_card_or_sbp, payout_bank, payout_comment,
+                    created_by_admin_id, completed_by_admin_id,
+                    created_at, link_sent_at, filled_at, completed_at
+                )
+                SELECT
+                    id, booking_id, status, payout_token, amount,
+                    payout_full_name, payout_card_or_sbp, payout_bank, payout_comment,
+                    created_by_admin_id, completed_by_admin_id,
+                    created_at, link_sent_at, filled_at, completed_at
+                FROM refund_requests
+            """))
+            conn.execute(text("DROP TABLE refund_requests"))
+            conn.execute(text("ALTER TABLE refund_requests_new RENAME TO refund_requests"))
+            conn.execute(text("CREATE UNIQUE INDEX ix_refund_requests_booking_id ON refund_requests (booking_id)"))
+            conn.execute(text("CREATE UNIQUE INDEX ix_refund_requests_payout_token ON refund_requests (payout_token)"))
+            conn.execute(text("CREATE INDEX ix_refund_requests_status ON refund_requests (status)"))
+            conn.execute(text("CREATE INDEX ix_refund_requests_email ON refund_requests (email)"))
+            conn.execute(text("PRAGMA foreign_keys=ON"))
+            conn.commit()
+        elif need_email:
+            # booking_id уже nullable, но колонки email ещё нет — добавляем точечно.
+            conn.execute(text("ALTER TABLE refund_requests ADD COLUMN email VARCHAR(255)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_refund_requests_email ON refund_requests (email)"))
+            conn.commit()
+
+    # Разовый перенос балансов из users.balance в email_balances (по email).
+    # Идемпотентно: после переноса users.balance обнуляется, повторный прогон ничего
+    # не делает. Таблица email_balances уже создана через create_all к этому моменту.
+    with engine.connect() as conn:
+        try:
+            conn.execute(text(
+                "INSERT INTO email_balances (email, amount, updated_at) "
+                "SELECT lower(email), balance, CURRENT_TIMESTAMP FROM users "
+                "WHERE balance > 0 AND lower(email) NOT IN (SELECT email FROM email_balances)"
+            ))
+            conn.execute(text("UPDATE users SET balance = 0 WHERE balance > 0"))
+            conn.commit()
+        except Exception:
+            # Если что-то пошло не так — не валим старт приложения
+            conn.rollback()
 
 
 @asynccontextmanager
@@ -495,6 +579,7 @@ app.include_router(admin_bookings.router)
 app.include_router(admin_users.router)
 app.include_router(refunds.router)
 app.include_router(post_show_receipts.router)
+app.include_router(cancellations.router)
 app.include_router(statistics.router)
 app.include_router(uploads.router)
 app.include_router(geocode.router)

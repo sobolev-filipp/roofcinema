@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from sqlalchemy.orm import Session
 
+from ..balance import serialize_user
 from ..db import get_db
 from ..deps import get_current_jti, get_current_user
 from ..email_service import send_verification_code
@@ -15,8 +16,8 @@ router = APIRouter(prefix="/api/users", tags=["users"])
 
 
 @router.get("/me", response_model=UserOut)
-def me(user: User = Depends(get_current_user)):
-    return user
+def me(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return serialize_user(db, user)
 
 
 @router.patch("/me", response_model=UserOut)
@@ -25,7 +26,7 @@ def update_me(payload: UserUpdateIn, db: Session = Depends(get_db), user: User =
         setattr(user, k, v)
     db.commit()
     db.refresh(user)
-    return user
+    return serialize_user(db, user)
 
 
 # === INITIAL SETUP: смена email + пароля для дефолтного владельца ===
@@ -72,7 +73,7 @@ def initial_setup(
     ))
     db.commit()
     send_verification_code(user.email, code)
-    return user
+    return serialize_user(db, user)
 
 
 # === SECURITY: смена пароля + список сессий + revoke ===

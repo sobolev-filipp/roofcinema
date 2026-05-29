@@ -63,6 +63,21 @@ class User(Base):
     rooftop_admin_links = relationship("RooftopAdmin", back_populates="user", cascade="all, delete-orphan")
 
 
+class EmailBalance(Base):
+    """Баланс, привязанный к EMAIL, а не к аккаунту.
+
+    Так возврат на баланс работает даже для гостей без аккаунта: деньги копятся
+    на email. Когда человек зарегистрируется и подтвердит этот email — баланс
+    автоматически становится «его» (мы читаем баланс по email пользователя).
+    Email хранится в нижнем регистре."""
+    __tablename__ = "email_balances"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
+    amount: Mapped[float] = mapped_column(Numeric(12, 2), default=0, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+
 class EmailVerification(Base):
     """Код подтверждения email. Один активный на пользователя."""
     __tablename__ = "email_verifications"
@@ -255,6 +270,8 @@ class Screening(Base):
     # Локальное наивное время окончания показа в TZ крыши. Если null —
     # фоновая задача оценит окончание как starts_at + 3ч (типовая длительность).
     ends_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Показ отменён администратором (≠ скрыт). Брони уходят в раздел «Отмена показа».
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     booking_window_minutes: Mapped[int] = mapped_column(Integer, default=120, nullable=False)
     booking_opens_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
     booking_closes_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -339,6 +356,9 @@ class Booking(Base):
     post_show_admin_notified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     # Когда отправили напоминание пользователю «осталось < 25% времени на оплату».
     payment_reminder_sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Показ этой брони отменён — ждёт решения админа (перенос / возврат / на баланс).
+    # Раздел «Отмена показа» показывает именно такие брони.
+    needs_cancel_resolution: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_by_admin_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     paid_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -406,7 +426,11 @@ class RefundRequest(Base):
     __tablename__ = "refund_requests"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    booking_id: Mapped[int] = mapped_column(ForeignKey("bookings.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    # nullable: возврат может быть «с баланса» — без привязки к конкретной броне.
+    # В этом случае получатель определяется по email (ниже).
+    booking_id: Mapped[int | None] = mapped_column(ForeignKey("bookings.id", ondelete="CASCADE"), nullable=True, unique=True, index=True)
+    # Email получателя для возврата с баланса (когда booking_id is None).
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     status: Mapped[str] = mapped_column(String(16), default=RefundRequestStatus.created.value, nullable=False, index=True)
     payout_token: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
     amount: Mapped[float] = mapped_column(Numeric(10, 2), default=0, nullable=False)

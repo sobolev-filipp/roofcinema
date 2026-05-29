@@ -28,6 +28,7 @@ from ..models import (
     User,
     UserRole,
 )
+from ..balance import credit_balance, debit_balance, get_balance
 from ..schemas import BookingCreateIn, BookingOut, BookingScreeningInfo, RefundBasicOut
 from ..utils import now_in_tz
 from ..ws_manager import manager
@@ -402,11 +403,9 @@ def cancel_booking(
         balance_used = float(b.balance_used or 0)
         external_amount = max(0.0, total - balance_used)
 
-        # Возвращаем на баланс ту часть, что была оплачена с баланса
-        if balance_used > 0 and b.user_id:
-            owner = db.get(User, b.user_id)
-            if owner:
-                owner.balance = float(owner.balance or 0) + balance_used
+        # Возвращаем на баланс (по email) ту часть, что была оплачена с баланса
+        if balance_used > 0:
+            credit_balance(db, b.email, balance_used)
 
         if external_amount > 0:
             # Есть что вернуть переводом — создаём RefundRequest и ставим refund_pending
@@ -555,6 +554,8 @@ def transfer_booking(
     if b.status == BookingStatus.waiting_payment.value:
         b.expires_at = datetime.utcnow() + timedelta(minutes=target.booking_window_minutes)
     b.note = (b.note or "") + f"\n[Перенесено с показа #{old_screening_id} на #{target.id}]"
+    # Перенос закрывает вопрос по отменённому показу
+    b.needs_cancel_resolution = False
     # Пишем событие в журнал переносов (для статистики)
     db.add(BookingTransfer(
         booking_id=b.id,
@@ -594,25 +595,22 @@ def set_post_show_receipt_preference(
 
 @router.post("/{booking_id}/refund-to-balance", response_model=BookingOut, dependencies=[Depends(require_perm("manage_cancellations"))])
 def refund_to_balance(booking_id: int, db: Session = Depends(get_db)):
-    """Возврат оплаченной (или ждущей оплаты) брони на баланс пользователя.
-    Меняет статус на refunded и пополняет user.balance на total_amount."""
+    """Возврат брони на баланс. Баланс привязан к EMAIL брони, поэтому работает
+    и для гостей без аккаунта — деньги станут доступны, когда они подтвердят этот email.
+    Меняет статус на refunded и пополняет email-баланс на total_amount."""
     b = db.query(Booking).options(*_eager()).filter(Booking.id == booking_id).first()
     if not b:
         raise HTTPException(status_code=404, detail="Бронь не найдена")
-    if not b.user_id:
-        raise HTTPException(status_code=400, detail="У брони нет привязанного пользователя")
     # Допускаем возврат для cancelled и refund_pending (после отмены оплаченной брони).
     # Запрещаем только если уже refunded или истёк срок (там нечего возвращать).
     if b.status in (BookingStatus.refunded.value, BookingStatus.expired.value):
         raise HTTPException(status_code=400, detail=f"Бронь в статусе {b.status} — возврат не нужен")
-    user = db.get(User, b.user_id)
-    if not user:
-        raise HTTPException(status_code=400, detail="Пользователь не найден")
     amount = float(b.total_amount)
-    user.balance = float(user.balance or 0) + amount
+    credit_balance(db, b.email, amount)
     b.status = BookingStatus.refunded.value
     b.cancelled_at = datetime.utcnow()
     b.cancel_reason = "Возврат на баланс"
+    b.needs_cancel_resolution = False  # вопрос по отменённому показу закрыт
     db.commit()
     _broadcast(b.screening_id, "updated", b.id)
     return _to_out(db.query(Booking).options(*_eager()).filter(Booking.id == b.id).first())
@@ -643,11 +641,12 @@ def apply_balance(
     remaining_due = max(0.0, total - already)
     if amount > remaining_due + 1e-9:
         raise HTTPException(status_code=400, detail=f"К доплате осталось {remaining_due:.0f} ₽")
-    current = float(user.balance or 0)
+    # Баланс берём по email пользователя (единый кошелёк email)
+    current = get_balance(db, user.email)
     if amount > current + 1e-9:
         raise HTTPException(status_code=400, detail=f"На балансе только {current:.0f} ₽")
 
-    user.balance = current - amount
+    debit_balance(db, user.email, amount)
     b.balance_used = already + amount
     if b.balance_used >= total - 1e-9:
         b.status = BookingStatus.paid_by_balance.value

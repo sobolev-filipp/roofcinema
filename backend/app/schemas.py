@@ -323,6 +323,7 @@ class ScreeningOut(BaseModel):
     rooftop_id: int
     starts_at: datetime
     ends_at: datetime | None = None
+    cancelled_at: datetime | None = None
     booking_window_minutes: int
     booking_opens_at: datetime | None = None
     booking_closes_at: datetime | None = None
@@ -401,7 +402,8 @@ class RefundRequestOut(BaseModel):
     """Запись запроса возврата для админа."""
     model_config = ConfigDict(from_attributes=True)
     id: int
-    booking_id: int
+    booking_id: int | None = None  # None — возврат с баланса (без брони)
+    email: str | None = None       # email получателя для возврата с баланса
     status: str
     amount: float
     payout_full_name: str | None = None
@@ -604,6 +606,7 @@ class BookingOut(BaseModel):
     short_code: str
     note: str | None = None
     needs_post_show_receipt: bool = False
+    needs_cancel_resolution: bool = False
     created_at: datetime
     paid_at: datetime | None = None
     attended_at: datetime | None = None

@@ -14,9 +14,10 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload
 
+from ..balance import debit_balance, get_balance, norm_email
 from ..config import get_settings
 from ..db import get_db
-from ..deps import require_admin_or_super, require_perm
+from ..deps import get_current_user, require_admin_or_super, require_perm
 from ..email_service import send_email
 from ..models import (
     Booking,
@@ -76,11 +77,19 @@ def _to_admin_out(rr: RefundRequest) -> RefundRequestOut:
     s = b.screening if b else None
     out = RefundRequestOut.model_validate(rr, from_attributes=True)
     out.payout_url = _absolute_refund_url(rr.payout_token)
-    out.booking_full_name = b.full_name if b else ""
-    out.booking_email = b.email if b else ""
-    out.movie_title = (s.movie.title if s and s.movie else "") if s else ""
-    out.screening_starts_at = s.starts_at if s else None
-    out.rooftop_name = (s.rooftop.name if s and s.rooftop else "") if s else ""
+    if b:
+        out.booking_full_name = b.full_name
+        out.booking_email = b.email
+        out.movie_title = (s.movie.title if s and s.movie else "") if s else ""
+        out.screening_starts_at = s.starts_at if s else None
+        out.rooftop_name = (s.rooftop.name if s and s.rooftop else "") if s else ""
+    else:
+        # возврат с баланса — брони нет
+        out.booking_full_name = rr.payout_full_name or "—"
+        out.booking_email = rr.email or ""
+        out.movie_title = "Возврат с баланса"
+        out.screening_starts_at = None
+        out.rooftop_name = ""
     return out
 
 
@@ -147,6 +156,7 @@ def create_refund_request(
         rr.link_sent_at = datetime.utcnow()
     # переводим бронь в refund_pending
     b.status = BookingStatus.refund_pending.value
+    b.needs_cancel_resolution = False  # вопрос по отменённому показу закрыт
     db.commit()
     db.refresh(rr)
     return _to_admin_out(rr)
@@ -174,6 +184,11 @@ def resend_link(
         raise HTTPException(status_code=404, detail="Запрос не найден")
     if rr.status == RefundRequestStatus.completed.value:
         raise HTTPException(status_code=400, detail="Запрос уже выполнен — повторно слать не нужно")
+    if rr.booking is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Это возврат с баланса — реквизиты уже заполнены пользователем, ссылку отправлять не нужно",
+        )
     sent = _send_refund_link_email(db, rr.booking, rr)
     if not sent:
         raise HTTPException(status_code=502, detail="Не удалось отправить email — проверьте SMTP")
@@ -282,6 +297,55 @@ def mark_completed(
     db.commit()
     db.refresh(rr)
     return _to_admin_out(rr)
+
+
+# === ПОЛЬЗОВАТЕЛЬ: возврат средств со своего баланса ===
+
+@router.post("/api/me/balance-refund-request", status_code=201)
+def request_balance_refund(
+    payload: RefundSubmitIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Пользователь запрашивает возврат всех средств со своего баланса (по email).
+    Создаётся RefundRequest без брони, статус сразу `filled` (реквизиты уже введены).
+    Баланс списывается немедленно — чтобы те же деньги нельзя было потратить дважды."""
+    email = norm_email(user.email)
+    balance = get_balance(db, email)
+    if balance <= 0:
+        raise HTTPException(status_code=400, detail="На балансе нет средств для возврата")
+
+    existing = (
+        db.query(RefundRequest)
+        .filter(
+            RefundRequest.booking_id.is_(None),
+            RefundRequest.email == email,
+            RefundRequest.status != RefundRequestStatus.completed.value,
+        )
+        .first()
+    )
+    if existing:
+        raise HTTPException(
+            status_code=400,
+            detail="Запрос на возврат с баланса уже создан и ожидает обработки",
+        )
+
+    rr = RefundRequest(
+        booking_id=None,
+        email=email,
+        amount=balance,
+        status=RefundRequestStatus.filled.value,
+        payout_token=secrets.token_urlsafe(24),
+        payout_full_name=payload.payout_full_name.strip(),
+        payout_card_or_sbp=payload.payout_card_or_sbp.strip(),
+        payout_bank=(payload.payout_bank or "").strip() or None,
+        payout_comment=(payload.payout_comment or "").strip() or None,
+        filled_at=datetime.utcnow(),
+    )
+    db.add(rr)
+    debit_balance(db, email, balance)
+    db.commit()
+    return {"ok": True, "amount": float(balance), "balance": get_balance(db, email)}
 
 
 # === ПУБЛИЧНЫЕ: пользователь заполняет реквизиты ===

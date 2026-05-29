@@ -192,6 +192,8 @@ def _render_post_show_receipt_text(db: Session, b: Booking) -> str:
         for it in b.items
     )
     booking_link = f"{get_settings().APP_BASE_URL.rstrip('/')}/bookings/{b.id}"
+    # Чек оформляется только на сумму, оплаченную «живыми» деньгами (без части с баланса).
+    external_amount = max(0.0, float(b.total_amount) - float(b.balance_used or 0))
     ctx = {
         "full_name": b.full_name,
         "movie": info.movie.title if (info and info.movie) else "",
@@ -199,7 +201,7 @@ def _render_post_show_receipt_text(db: Session, b: Booking) -> str:
         "rooftop": info.rooftop.name if (info and info.rooftop) else "",
         "city": info.rooftop.city.name if (info and info.rooftop and info.rooftop.city) else "",
         "items": items_text,
-        "amount": f"{int(float(b.total_amount))}",
+        "amount": f"{int(external_amount)}",
         "booking_link": booking_link,
     }
 

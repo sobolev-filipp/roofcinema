@@ -164,8 +164,9 @@ def login_resend(payload: LoginResendIn, db: Session = Depends(get_db)):
 
 
 @router.get("/me", response_model=UserOut)
-def me(user: User = Depends(get_current_user)):
-    return user
+def me(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    from ..balance import serialize_user
+    return serialize_user(db, user)
 
 
 @router.post("/logout", status_code=204)
@@ -250,8 +251,27 @@ def verify_email_confirm(
     user.is_email_verified = True
     user.email_verified_at = datetime.utcnow()
     db.query(EmailVerification).filter(EmailVerification.user_id == user.id).delete()
+    # Привязываем к аккаунту все «осиротевшие» брони с этим же email (без user_id) —
+    # человек подтвердил, что почта его. Баланс уже виден, т.к. привязан к email.
+    _link_orphan_bookings(db, user)
     db.commit()
     return {"verified": True}
+
+
+def _link_orphan_bookings(db: Session, user: User) -> int:
+    """Привязывает брони без аккаунта (user_id IS NULL) с email == user.email.
+    Возвращает количество привязанных. Не коммитит — коммитит вызывающий."""
+    from sqlalchemy import func
+    from ..models import Booking
+    rows = (
+        db.query(Booking)
+        .filter(Booking.user_id.is_(None))
+        .filter(func.lower(Booking.email) == user.email.strip().lower())
+        .all()
+    )
+    for b in rows:
+        b.user_id = user.id
+    return len(rows)
 
 
 # === PASSWORD RESET ===

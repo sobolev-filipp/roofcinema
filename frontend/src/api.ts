@@ -197,7 +197,8 @@ export type RefundRequestStatus = "created" | "filled" | "completed";
 
 export type RefundRequest = {
   id: number;
-  booking_id: number;
+  booking_id: number | null;
+  email: string | null;
   status: RefundRequestStatus;
   amount: number;
   payout_full_name: string | null;
@@ -239,6 +240,7 @@ export type UserSearchHit = {
   social_url: string | null;
   booking_count: number;
   last_booking_at: string | null;
+  balance: number;
 };
 
 export type PayoutTemplate = {
@@ -258,6 +260,7 @@ export type Screening = {
   rooftop_id: number;
   starts_at: string;
   ends_at: string | null;
+  cancelled_at: string | null;
   booking_window_minutes: number;
   booking_opens_at: string | null;
   booking_closes_at: string | null;
@@ -429,6 +432,7 @@ export type Booking = {
   short_code: string;
   note: string | null;
   needs_post_show_receipt: boolean;
+  needs_cancel_resolution: boolean;
   created_at: string;
   paid_at: string | null;
   attended_at: string | null;
