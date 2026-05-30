@@ -1071,7 +1071,11 @@ label {
   min-width: 64px;
   font-size: var(--fs-xs);
   padding: 3px 7px;
+  /* Бейдж лежит поверх постера — фон всегда тёмный полупрозрачный, а текст
+     всегда белый, в обеих темах (иначе в светлой теме наследуется тёмный
+     var(--text) и рейтинг становится «чёрным» на тёмном фоне). */
   background: rgba(0, 0, 0, 0.78);
+  color: #fff;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: var(--r-xs);
   white-space: nowrap;

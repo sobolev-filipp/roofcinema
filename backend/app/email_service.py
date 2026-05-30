@@ -256,10 +256,10 @@ def send_screening_summary(
     guests_count: int,
     total_amount: float,
 ) -> None:
-    """Письмо-итог администратору после окончания показа: сводка по броням.
+    """Письмо-сводка администратору после закрытия бронирования на показ.
     seat_lines = ["Кресло-мешок ×3 — 4500 ₽", ...] (по типам мест)."""
     lines = ["Здравствуйте!", ""]
-    lines.append(f"Показ завершился — бронирование закрыто.")
+    lines.append("Бронирование на показ закрыто. Ниже — итоговая сводка по броням.")
     lines.append("")
     lines.append(f"«{movie_title}»")
     lines.append(f"{starts_at_text} · {rooftop_name}")
@@ -275,7 +275,7 @@ def send_screening_summary(
         lines.append("")
         lines.append(f"Общая сумма: {total_amount:.0f} ₽")
     body = "\n".join(lines)
-    send_email(admin_email, f"Итог показа «{movie_title}» — Кино на крыше", body)
+    send_email(admin_email, f"Сводка по бронированиям: «{movie_title}» — Кино на крыше", body)
 
 
 def send_payment_rejected(email: str, movie_title: str, booking_id: int, reason: str) -> None:
