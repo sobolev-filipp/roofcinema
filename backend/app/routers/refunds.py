@@ -12,6 +12,7 @@ import secrets
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session, joinedload
 
 from ..balance import debit_balance, get_balance, norm_email
@@ -294,6 +295,64 @@ def mark_completed(
     rr.completed_by_admin_id = admin.id
     if rr.booking:
         rr.booking.status = BookingStatus.refunded.value
+    db.commit()
+    db.refresh(rr)
+    return _to_admin_out(rr)
+
+
+# === АДМИН: возврат средств с баланса клиента (раздел «Клиенты») ===
+
+class AdminBalanceRefundIn(BaseModel):
+    email: EmailStr
+    amount: float = Field(gt=0, description="Сколько вернуть с баланса")
+    payout_full_name: str | None = Field(default=None, max_length=255)
+    payout_card_or_sbp: str | None = Field(default=None, max_length=64)
+    payout_bank: str | None = Field(default=None, max_length=120)
+    payout_comment: str | None = None
+
+
+@router.post(
+    "/api/admin/balance-refund-request",
+    response_model=RefundRequestOut,
+    status_code=201,
+)
+def admin_create_balance_refund(
+    payload: AdminBalanceRefundIn,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_perm("manage_refunds")),
+):
+    """Создаёт запрос на возврат с баланса клиента на произвольную сумму.
+    Сумма сразу списывается с баланса (по email), чтобы её нельзя было потратить дважды.
+    Реквизиты можно указать сразу (→ статус «filled») или позже в разделе «Возвраты»."""
+    email = norm_email(payload.email)
+    if not email:
+        raise HTTPException(status_code=400, detail="Не указан email клиента")
+    balance = get_balance(db, email)
+    if payload.amount > balance + 1e-9:
+        raise HTTPException(
+            status_code=400,
+            detail=f"На балансе только {balance:.0f} ₽ — нельзя вернуть {payload.amount:.0f} ₽",
+        )
+
+    full_name = (payload.payout_full_name or "").strip()
+    card = (payload.payout_card_or_sbp or "").strip()
+    has_requisites = bool(full_name and len(card) >= 4)
+
+    rr = RefundRequest(
+        booking_id=None,
+        email=email,
+        amount=payload.amount,
+        status=RefundRequestStatus.filled.value if has_requisites else RefundRequestStatus.created.value,
+        payout_token=secrets.token_urlsafe(24),
+        payout_full_name=full_name or None,
+        payout_card_or_sbp=card or None,
+        payout_bank=(payload.payout_bank or "").strip() or None,
+        payout_comment=(payload.payout_comment or "").strip() or None,
+        created_by_admin_id=admin.id,
+        filled_at=datetime.utcnow() if has_requisites else None,
+    )
+    db.add(rr)
+    debit_balance(db, email, payload.amount)
     db.commit()
     db.refresh(rr)
     return _to_admin_out(rr)

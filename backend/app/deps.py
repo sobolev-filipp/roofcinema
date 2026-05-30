@@ -102,6 +102,25 @@ def require_perm(perm: str):
     return _dep
 
 
+def require_any_perm(*perms: str):
+    """Как require_perm, но достаточно ЛЮБОГО из перечисленных прав.
+    Полезно для разделов, доступных по нескольким смежным правам (напр. «Клиенты»
+    — manage_customers ИЛИ исторически manage_bookings)."""
+    def _dep(user: User = Depends(require_admin_or_super)) -> User:
+        if user.role == UserRole.super_admin.value:
+            return user
+        if user.permissions is None:
+            return user
+        have = set(user.permissions or [])
+        if not have.intersection(perms):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"У вас нет ни одного из прав: {', '.join(perms)}",
+            )
+        return user
+    return _dep
+
+
 def require_rooftop_access(
     rooftop_id: int,
     permission: str = "can_manage_movies",

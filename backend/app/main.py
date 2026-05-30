@@ -408,6 +408,130 @@ async def _post_show_receipt_loop():
         await asyncio.sleep(300)  # раз в 5 минут — этого достаточно
 
 
+_SUMMARY_PAID_STATUSES = ("paid", "paid_by_balance", "attended")
+
+
+async def _screening_summary_loop():
+    """После окончания каждого показа шлёт письмо-итог админам:
+    сколько и какие типы мест забронированы, число гостей и общая сумма.
+    Получатели: владельцы (super_admin) + админы, привязанные к крыше показа
+    с правом управления бронями (RooftopAdmin.can_manage_bookings).
+    Идемпотентно: после отправки проставляется screening.booking_summary_sent_at."""
+    from datetime import datetime
+
+    from .email_service import send_screening_summary
+    from .models import RooftopAdmin
+
+    while True:
+        try:
+            db = SessionLocal()
+            try:
+                screenings = (
+                    db.query(Screening)
+                    .options(
+                        joinedload(Screening.movie),
+                        joinedload(Screening.rooftop).joinedload(Rooftop.city),
+                    )
+                    .filter(
+                        Screening.cancelled_at.is_(None),
+                        Screening.booking_summary_sent_at.is_(None),
+                    )
+                    .limit(500)
+                    .all()
+                )
+                for s in screenings:
+                    tz_name = (
+                        s.rooftop.city.timezone
+                        if s.rooftop and s.rooftop.city else None
+                    )
+                    local_now = now_in_tz(tz_name)
+                    if s.ends_at:
+                        end_at = s.ends_at
+                    elif s.movie and s.movie.duration_min:
+                        end_at = s.starts_at + timedelta(minutes=int(s.movie.duration_min))
+                    else:
+                        end_at = s.starts_at + timedelta(hours=3)
+                    if end_at > local_now:
+                        continue  # показ ещё не закончился
+
+                    bookings = (
+                        db.query(Booking)
+                        .options(joinedload(Booking.items).joinedload(BookingItem.screening_seat_type))
+                        .filter(
+                            Booking.screening_id == s.id,
+                            Booking.status.in_(_SUMMARY_PAID_STATUSES),
+                        )
+                        .all()
+                    )
+                    seat_agg: dict[str, list] = {}  # name -> [qty, amount]
+                    total_amount = 0.0
+                    guests = 0
+                    for b in bookings:
+                        total_amount += float(b.total_amount or 0)
+                        for it in b.items:
+                            cap = it.screening_seat_type.capacity if it.screening_seat_type else 1
+                            guests += int(it.qty) * int(cap or 1)
+                            agg = seat_agg.setdefault(it.name, [0, 0.0])
+                            agg[0] += int(it.qty)
+                            agg[1] += float(it.price_each or 0) * int(it.qty)
+                    seat_lines = [
+                        f"{name} ×{qty} — {amount:.0f} ₽"
+                        for name, (qty, amount) in seat_agg.items()
+                    ]
+
+                    # Получатели: владельцы + админы крыши с правом броней
+                    recipients: dict[str, str] = {}
+                    supers = (
+                        db.query(User)
+                        .filter(
+                            User.is_active.is_(True),
+                            User.role == UserRole.super_admin.value,
+                        )
+                        .all()
+                    )
+                    for u in supers:
+                        if u.email:
+                            recipients[u.email.lower()] = u.email
+                    links = (
+                        db.query(RooftopAdmin)
+                        .options(joinedload(RooftopAdmin.user))
+                        .filter(
+                            RooftopAdmin.rooftop_id == s.rooftop_id,
+                            RooftopAdmin.can_manage_bookings.is_(True),
+                        )
+                        .all()
+                    )
+                    for lnk in links:
+                        u = lnk.user
+                        if u and u.is_active and u.email:
+                            recipients[u.email.lower()] = u.email
+
+                    starts_text = s.starts_at.strftime("%d.%m.%Y %H:%M")
+                    movie_title = s.movie.title if s.movie else ""
+                    rooftop_name = s.rooftop.name if s.rooftop else ""
+                    for email in recipients.values():
+                        try:
+                            send_screening_summary(
+                                email,
+                                movie_title=movie_title,
+                                starts_at_text=starts_text,
+                                rooftop_name=rooftop_name,
+                                seat_lines=seat_lines,
+                                bookings_count=len(bookings),
+                                guests_count=guests,
+                                total_amount=total_amount,
+                            )
+                        except Exception:
+                            log.exception("screening summary send failed screening_id=%s", s.id)
+                    s.booking_summary_sent_at = datetime.utcnow()
+                    db.commit()
+            finally:
+                db.close()
+        except Exception:
+            log.exception("screening_summary_loop iteration failed")
+        await asyncio.sleep(300)  # раз в 5 минут
+
+
 def _migrate_columns() -> None:
     """Добавляет новые колонки к существующим таблицам, если их нет.
     Безопасно при повторных запусках — проверяет через inspect перед ALTER TABLE."""
@@ -441,6 +565,8 @@ def _migrate_columns() -> None:
             conn.execute(text("ALTER TABLE screenings ADD COLUMN ends_at DATETIME"))
         if "cancelled_at" not in sc:
             conn.execute(text("ALTER TABLE screenings ADD COLUMN cancelled_at DATETIME"))
+        if "booking_summary_sent_at" not in sc:
+            conn.execute(text("ALTER TABLE screenings ADD COLUMN booking_summary_sent_at DATETIME"))
         conn.commit()
 
     # refund_requests: возврат «с баланса» (без брони).
@@ -539,10 +665,11 @@ async def lifespan(app: FastAPI):
     notify_task = asyncio.create_task(_notify_loop())
     post_show_task = asyncio.create_task(_post_show_receipt_loop())
     reminder_task = asyncio.create_task(_payment_reminder_loop())
+    summary_task = asyncio.create_task(_screening_summary_loop())
     try:
         yield
     finally:
-        for t in (notify_task, post_show_task, reminder_task):
+        for t in (notify_task, post_show_task, reminder_task, summary_task):
             t.cancel()
             try:
                 await t

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import { Spinner } from "../components/Loaders";
+import { isStandalone } from "../lib/pwa";
 import { useTheme } from "../theme";
 import { useUI } from "../ui";
 
@@ -20,6 +21,7 @@ export default function ProfilePage() {
   if (!user) return null;
 
   const balance = Number(user.balance);
+  const showInstall = !isStandalone();
 
   const initials = (user.full_name || user.email)
     .split(/\s+/)
@@ -40,6 +42,19 @@ export default function ProfilePage() {
             </div>
           </div>
           <Link to="/verify-email" className="btn-as-link primary btn-sm">Подтвердить</Link>
+        </div>
+      )}
+
+      {showInstall && (
+        <div className="card install-promo">
+          <div className="install-promo-icon" aria-hidden="true">📲</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="pl-title">Установить приложение</div>
+            <div className="muted" style={{ fontSize: 13, marginTop: 2 }}>
+              Добавьте «Кино на крыше» на экран телефона — запуск в одно касание и QR-билеты под рукой.
+            </div>
+          </div>
+          <Link to="/install" className="btn-as-link primary btn-sm">Установить</Link>
         </div>
       )}
 
@@ -133,7 +148,7 @@ export default function ProfilePage() {
             <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>
               Цветовая тема приложения
             </div>
-            <div className="seg" style={{ maxWidth: 320 }}>
+            <div className="seg seg-full">
               <button
                 type="button"
                 className={theme === "dark" ? "active" : ""}

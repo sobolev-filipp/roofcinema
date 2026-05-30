@@ -520,6 +520,12 @@ echo "   .env:     /var/www/roofcinema/backend/.env        — не тронут
 chmod +x /var/www/roofcinema/deploy.sh
 ```
 
+## Подключение к серверу
+
+```bash
+ssh root@93.88.203.172
+```
+
 ### Процесс обновления (каждый раз)
 
 **Шаг 1 — на вашем компьютере:**
@@ -545,9 +551,9 @@ systemctl restart roofcinema
 ## Вариант Бэкап + деплой
 
 ```bash
-ssh root@93.88.203.172
 cp /var/www/roofcinema/data/roofcinema.db /var/www/roofcinema/data/roofcinema.db.bak-$(date +%F)
 /var/www/roofcinema/deploy.sh
+systemctl restart roofcinema
 ```
 
 База данных, загруженные файлы и `.env` не затрагиваются.

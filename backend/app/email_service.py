@@ -245,6 +245,39 @@ def send_post_show_receipt_pending_digest(
     send_email(admin_email, "Напоминание: нужно прикрепить чеки", body)
 
 
+def send_screening_summary(
+    admin_email: str,
+    *,
+    movie_title: str,
+    starts_at_text: str,
+    rooftop_name: str,
+    seat_lines: list[str],
+    bookings_count: int,
+    guests_count: int,
+    total_amount: float,
+) -> None:
+    """Письмо-итог администратору после окончания показа: сводка по броням.
+    seat_lines = ["Кресло-мешок ×3 — 4500 ₽", ...] (по типам мест)."""
+    lines = ["Здравствуйте!", ""]
+    lines.append(f"Показ завершился — бронирование закрыто.")
+    lines.append("")
+    lines.append(f"«{movie_title}»")
+    lines.append(f"{starts_at_text} · {rooftop_name}")
+    lines.append("")
+    if bookings_count == 0:
+        lines.append("Броней на этот показ не было.")
+    else:
+        lines.append(f"Броней: {bookings_count} · гостей: {guests_count}")
+        lines.append("")
+        lines.append("Забронированные места:")
+        for sl in seat_lines:
+            lines.append(f"  • {sl}")
+        lines.append("")
+        lines.append(f"Общая сумма: {total_amount:.0f} ₽")
+    body = "\n".join(lines)
+    send_email(admin_email, f"Итог показа «{movie_title}» — Кино на крыше", body)
+
+
 def send_payment_rejected(email: str, movie_title: str, booking_id: int, reason: str) -> None:
     body = (
         f"Здравствуйте!\n\n"

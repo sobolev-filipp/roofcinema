@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useAuth } from "./auth";
 import Header from "./components/Header";
+import InstallBanner from "./components/InstallBanner";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import HomePage from "./pages/HomePage";
@@ -75,6 +76,7 @@ export default function App() {
           <>
             <SetupGuard />
             <Header />
+            <InstallBanner />
             <Routes>
               <Route path="/" element={<HomePage />} />
               <Route path="/movies/:id" element={<MoviePage />} />

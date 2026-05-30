@@ -192,6 +192,44 @@ def external_search(
         external.extend(cached)
         sources_used.append("omdb")
 
+    # Помечаем внешние результаты, которые уже есть в нашей базе — чтобы админ
+    # не добавил дубликат. Сопоставляем по imdb_id (кросс-источниковый ключ),
+    # kinopoisk_id и по (название + год) как запасной вариант.
+    rows = db.query(
+        Movie.id, Movie.title, Movie.original_title, Movie.year, Movie.imdb_id, Movie.kinopoisk_id
+    ).all()
+    by_imdb: dict[str, int] = {}
+    by_kp: dict[str, int] = {}
+    by_title_year: dict[tuple[str, Any], int] = {}
+    for mid, title, otitle, year, imdb, kp in rows:
+        if imdb:
+            by_imdb[imdb.strip().lower()] = mid
+        if kp is not None:
+            by_kp[str(kp)] = mid
+        if title:
+            by_title_year[(title.strip().lower(), year)] = mid
+        if otitle:
+            by_title_year[(otitle.strip().lower(), year)] = mid
+
+    # Не мутируем закэшированные словари — работаем с копиями.
+    annotated: list[dict[str, Any]] = []
+    for h in external:
+        hit = dict(h)
+        match: int | None = None
+        imdb = (hit.get("imdb_id") or "").strip().lower()
+        if imdb and imdb in by_imdb:
+            match = by_imdb[imdb]
+        if match is None and hit.get("source") == "kinopoisk" and hit.get("external_id") is not None:
+            match = by_kp.get(str(hit.get("external_id")))
+        if match is None:
+            t = (hit.get("title") or "").strip().lower()
+            if t:
+                match = by_title_year.get((t, hit.get("year")))
+        hit["already_added"] = match is not None
+        hit["existing_movie_id"] = match
+        annotated.append(hit)
+    external = annotated
+
     return {
         "configured": bool(external) or bool(omdb_key or kp_key),
         "sources": sources_used,

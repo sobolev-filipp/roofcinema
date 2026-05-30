@@ -31,7 +31,7 @@ function uaShort(ua: string | null): string {
 }
 
 export default function SecurityPage() {
-  const { logout } = useAuth();
+  const { user, logout } = useAuth();
   const { confirm } = useUI();
   const nav = useNavigate();
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -57,6 +57,23 @@ export default function SecurityPage() {
       setCur(""); setPw(""); setPw2("");
       setInfo("Пароль обновлён. Все другие сессии завершены.");
       await reload();
+    } catch (e: any) { setErr(e.message); }
+    finally { setBusy(false); }
+  }
+
+  async function sendReset() {
+    if (!user?.email) return;
+    setErr(null); setInfo(null);
+    const ok = await confirm({
+      title: "Сбросить пароль по email?",
+      message: `На ${user.email} придёт ссылка для установки нового пароля. Подходит, если вы забыли текущий.`,
+      confirmText: "Отправить ссылку",
+    });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      await api.post("/api/auth/forgot-password", { email: user.email });
+      setInfo(`Ссылка для сброса пароля отправлена на ${user.email}. Проверьте почту (в т.ч. «Спам»).`);
     } catch (e: any) { setErr(e.message); }
     finally { setBusy(false); }
   }
@@ -115,6 +132,14 @@ export default function SecurityPage() {
           {busy && <Spinner />}
           {busy ? "Меняем..." : "Сменить пароль"}
         </button>
+        <div style={{ marginTop: 12, borderTop: "1px solid var(--border)", paddingTop: 12 }}>
+          <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>
+            Забыли текущий пароль? Можно сбросить его по ссылке на почту.
+          </div>
+          <button type="button" className="ghost btn-sm" onClick={sendReset} disabled={busy}>
+            Сбросить пароль по email
+          </button>
+        </div>
       </form>
 
       <h2 style={{ marginTop: 32 }}>Активные сессии</h2>

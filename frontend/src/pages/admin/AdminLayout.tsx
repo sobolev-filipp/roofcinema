@@ -12,7 +12,7 @@ const ALL_TABS = [
   { to: "/admin/movies",           label: "Фильмы",         key: "movies",    perm: "manage_movies" },
   { to: "/admin/screenings",       label: "Показы",         key: "screenings",perm: "manage_screenings" },
   { to: "/admin/bookings",         label: "Бронирования",   key: "bookings",  perm: "manage_bookings" },
-  { to: "/admin/customers",        label: "Клиенты",        key: "customers", perm: "manage_bookings" },
+  { to: "/admin/customers",        label: "Клиенты",        key: "customers", perm: "manage_customers" },
   { to: "/admin/manual-booking",   label: "+ Бронь вручную",key: "manual",    perm: "manual_booking" },
   { to: "/admin/receipts",         label: "Чеки",           key: "receipts",  perm: "manage_receipts" },
   { to: "/admin/refunds",          label: "Возвраты",       key: "refunds",   perm: "manage_refunds" },

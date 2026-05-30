@@ -21,6 +21,13 @@
   --warn: #f1c40f;
   --err: #ff5c5c;
 
+  /* -- интерактивные/служебные поверхности (адаптируются под тему) -- */
+  --hover-surface: #25253c;                  /* фон кнопок при наведении */
+  --hover-faint: rgba(255, 255, 255, 0.04);  /* лёгкое наведение: бургер, дровер */
+  --surface-faint: rgba(255, 255, 255, 0.04);/* статичная лёгкая подложка: hint-box */
+  --avatar-grad: linear-gradient(135deg, #2a2a3e, #14141c);  /* аватар-плейсхолдер */
+  --avatar-fg: #f5f5f7;                       /* инициалы в аватаре */
+
   /* -- spacing шкала (4px-base) -- */
   --s-1: 4px;
   --s-2: 8px;
@@ -191,7 +198,7 @@ button.ghost {
 .btn:hover,
 button:not([class]):hover,
 button.ghost:hover {
-  background: #25253c;
+  background: var(--hover-surface);
   border-color: var(--border-strong);
 }
 .btn:active { transform: translateY(1px); }
@@ -304,7 +311,7 @@ label {
   margin-bottom: var(--s-3);
 }
 .hint-box {
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--surface-faint);
   border: 1px solid var(--border);
   border-radius: var(--r-sm);
   padding: var(--s-3) var(--s-4);
@@ -533,7 +540,7 @@ label {
   flex-shrink: 0;
   position: relative;
 }
-.burger:hover { background: rgba(255, 255, 255, 0.04); }
+.burger:hover { background: var(--hover-faint); }
 .burger span {
   display: block;
   width: 22px;
@@ -605,7 +612,7 @@ label {
   color: var(--text);
   transition: background 0.15s;
 }
-.drawer-user:hover { background: rgba(255, 255, 255, 0.04); color: var(--text); }
+.drawer-user:hover { background: var(--hover-faint); color: var(--text); }
 .drawer-user .pl-arrow { margin-left: auto; }
 
 .drawer-close {
@@ -624,12 +631,13 @@ label {
   justify-content: center;
   z-index: 1;
 }
-.drawer-close:hover { background: rgba(255, 255, 255, 0.07); }
+.drawer-close:hover { background: var(--hover-faint); }
 .drawer-avatar {
   width: 48px;
   height: 48px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #2a2a3e, #14141c);
+  background: var(--avatar-grad);
+  color: var(--avatar-fg);
   border: 1px solid var(--border);
   display: inline-flex;
   align-items: center;
@@ -658,7 +666,7 @@ label {
   border-left: 3px solid transparent;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
-.drawer-link:hover { background: rgba(255, 255, 255, 0.04); color: var(--text); }
+.drawer-link:hover { background: var(--hover-faint); color: var(--text); }
 .drawer-link.active {
   color: var(--text);
   border-left-color: var(--accent);
@@ -729,9 +737,12 @@ label {
   .bnav-item svg { flex-shrink: 0; transition: transform 0.15s; }
   .bnav-item.active svg { transform: scale(1.08); }
 
-  /* Основной контент получает отступ снизу, чтобы кнопки в последней карточке
-     не прятались под панелью. 56px высота панели + 24px воздуха + safe-area. */
-  body:has(.bottom-nav) {
+  /* Контент-обёртка получает запас снизу, чтобы кнопки в последней карточке
+     не прятались под фиксированной нижней панелью. Отступ кладём прямо на .container
+     (а не на body через :has) — так надёжнее в PWA/старых webview и работает даже на
+     коротких страницах, где :has-правило на body клиренса не давало.
+     56px высота панели + 24px воздуха + safe-area. */
+  .container {
     padding-bottom: calc(80px + env(safe-area-inset-bottom));
   }
 }
@@ -947,9 +958,14 @@ label {
   color: #fff;
   font-weight: 600;
 }
+/* Модификатор: сегмент на всю ширину контейнера с равномерно растянутыми кнопками
+   (используется для переключателя темы в профиле). */
+.seg-full { width: 100%; max-width: none; }
+.seg-full button { flex: 1 1 0; text-align: center; justify-content: center; }
+
 @media (min-width: 720px) {
-  .seg { width: auto; }
-  .seg button { flex: 0 0 auto; padding: 6px 14px; }
+  .seg:not(.seg-full) { width: auto; }
+  .seg:not(.seg-full) button { flex: 0 0 auto; padding: 6px 14px; }
 }
 
 .date-nav {
@@ -1212,7 +1228,7 @@ label {
   border-radius: var(--r);
   overflow: hidden;
   border: 1px solid var(--border);
-  background: #1a1a26;
+  background: var(--bg-elevated);
 }
 
 /* =========================================================================
@@ -1476,7 +1492,8 @@ label {
   width: 72px;
   height: 72px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #2a2a3e, #14141c);
+  background: var(--avatar-grad);
+  color: var(--avatar-fg);
   border: 1px solid var(--border);
   display: flex;
   align-items: center;
@@ -1660,22 +1677,17 @@ label {
   overflow-x: auto;
   overflow-y: hidden;
   flex-wrap: nowrap;
-  /* Тонкий видимый скроллбар — подсказка, что вкладки можно прокручивать.
-     Колесо мыши и перетаскивание тоже работают (JS в AdminLayout). */
-  scrollbar-width: thin;
-  scrollbar-color: var(--border-strong) transparent;
+  /* Скроллбар скрыт визуально, но прокрутка работает: колесо мыши и перетаскивание
+     (JS в AdminLayout), трекпад и тач-жесты. */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
   -webkit-overflow-scrolling: touch;
   scroll-snap-type: x proximity;
   touch-action: pan-x;
   cursor: grab;
 }
 .admin-tabs:active { cursor: grabbing; }
-.admin-tabs::-webkit-scrollbar { height: 6px; }
-.admin-tabs::-webkit-scrollbar-thumb {
-  background: var(--border-strong);
-  border-radius: 999px;
-}
-.admin-tabs::-webkit-scrollbar-track { background: transparent; }
+.admin-tabs::-webkit-scrollbar { display: none; }
 .admin-tab {
   padding: var(--s-3) var(--s-4);
   color: var(--text-dim);
@@ -1720,7 +1732,7 @@ label {
   font-weight: 500;
   cursor: pointer;
 }
-.btn-as-link:hover { background: #25253c; color: var(--text); }
+.btn-as-link:hover { background: var(--hover-surface); color: var(--text); }
 .btn-as-link.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
 .btn-as-link.primary:hover { background: var(--accent-hover); color: #fff; }
 .btn-as-link.ghost { background: transparent; }
@@ -2060,6 +2072,9 @@ label {
 .search-hit { display: flex; gap: var(--s-3); flex-wrap: wrap; }
 .search-hit > img { width: 70px; height: 105px; object-fit: cover; border-radius: var(--r-xs); flex-shrink: 0; }
 .search-hit > div:nth-child(2) { flex: 1; min-width: 200px; }
+/* Уже добавленный фильм — приглушаем и подсвечиваем рамку, чтобы не задублировать. */
+.search-hit.is-added { border-color: var(--ok); }
+.search-hit.is-added > img { opacity: 0.7; }
 
 /* upload */
 .image-upload { display: flex; flex-direction: column; gap: var(--s-2); }
@@ -2798,6 +2813,13 @@ html[data-theme="light"] {
   --shadow-sm: 0 2px 6px rgba(0, 0, 0, 0.08);
   --shadow:    0 8px 24px rgba(0, 0, 0, 0.12);
   --shadow-lg: 0 18px 36px rgba(0, 0, 0, 0.18);
+
+  /* служебные поверхности — затемняющие варианты для светлого фона */
+  --hover-surface: #e6e6ee;
+  --hover-faint: rgba(0, 0, 0, 0.05);
+  --surface-faint: rgba(0, 0, 0, 0.035);
+  --avatar-grad: linear-gradient(135deg, #d6d6e2, #b9b9cc);
+  --avatar-fg: #2a2a3a;
 }
 
 /* В светлой теме нативные picker-иконки уже светлые — инверсия не нужна */
@@ -2826,3 +2848,66 @@ html[data-theme="light"] .menu-backdrop {
 html[data-theme="light"] .projector-overlay {
   background: rgba(20, 20, 30, 0.78);
 }
+
+/* =========================================================================
+   БАННЕР УСТАНОВКИ PWA + плашка в профиле
+   ========================================================================= */
+
+/* Всплывающий баннер — фиксирован снизу, над нижней навигацией на мобильных. */
+.install-banner {
+  position: fixed;
+  left: 50%;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: var(--z-backdrop);
+  width: calc(100% - 2 * var(--container-pad));
+  max-width: 560px;
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  background: var(--bg-card);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r);
+  box-shadow: var(--shadow-lg);
+  animation: install-banner-in 0.3s ease;
+}
+@keyframes install-banner-in {
+  from { opacity: 0; transform: translate(-50%, 16px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+/* На мобильных поднимаем баннер над нижней навигацией (56px + safe-area). */
+@media (max-width: 879px) {
+  .install-banner {
+    bottom: calc(56px + env(safe-area-inset-bottom) + 12px);
+  }
+}
+.install-banner-icon { font-size: 26px; flex-shrink: 0; }
+.install-banner-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.install-banner-text b { font-size: var(--fs-base); }
+.install-banner-text span { font-size: var(--fs-sm); color: var(--text-dim); line-height: 1.35; }
+.install-banner-cta { flex-shrink: 0; }
+.install-banner-close {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  border-radius: var(--r-sm);
+  font-size: 14px;
+}
+.install-banner-close:hover { background: var(--hover-faint); color: var(--text); }
+
+/* Плашка в профиле */
+.install-promo {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  margin-bottom: var(--s-4);
+  border-color: var(--accent);
+}
+.install-promo-icon { font-size: 28px; flex-shrink: 0; }

@@ -12,7 +12,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from ..db import get_db
-from ..deps import require_admin_or_super, require_perm
+from ..deps import require_admin_or_super, require_any_perm, require_perm
 from ..email_service import send_template_email
 from ..models import (
     Booking,
@@ -50,7 +50,7 @@ class UserSearchHit(BaseModel):
 
 
 @router.get("/users/search", response_model=list[UserSearchHit])
-def search_users(q: str, db: Session = Depends(get_db), _admin: User = Depends(require_perm("manage_bookings"))):
+def search_users(q: str, db: Session = Depends(get_db), _admin: User = Depends(require_any_perm("manage_bookings", "manage_customers", "manual_booking"))):
     """Поиск пользователя по email/телефону/ФИО.
     Ищем И в таблице users, И в исторических бронях (Booking) — чтобы найти даже
     тех, у кого нет аккаунта но кто уже бронировал раньше."""
@@ -160,7 +160,7 @@ def search_users(q: str, db: Session = Depends(get_db), _admin: User = Depends(r
 def email_balance_lookup(
     email: str,
     db: Session = Depends(get_db),
-    _admin: User = Depends(require_perm("manual_booking")),
+    _admin: User = Depends(require_any_perm("manual_booking", "manage_customers", "manage_refunds")),
 ):
     """Баланс по произвольному email — для показа в ручном бронировании,
     в т.ч. когда админ вводит почту вручную (а не выбирает из поиска)."""
@@ -172,7 +172,7 @@ def email_balance_lookup(
 def bookings_by_email(
     email: str,
     db: Session = Depends(get_db),
-    _admin: User = Depends(require_perm("manage_bookings")),
+    _admin: User = Depends(require_any_perm("manage_bookings", "manage_customers")),
 ):
     """Все брони по email (для раздела «Клиенты»). Сортировка: сначала свежие."""
     e = (email or "").strip().lower()

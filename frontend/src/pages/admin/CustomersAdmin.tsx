@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type Booking, type Screening, type UserSearchHit } from "../../api";
+import { useAuth } from "../../auth";
 import { Skeleton, Spinner } from "../../components/Loaders";
 import { STATUS_COLOR, STATUS_LABELS } from "../../lib/bookingStatus";
 import { useDebouncedValue } from "../../lib/hooks";
@@ -18,7 +19,9 @@ function isActiveScreening(s: Screening) {
 
 export default function CustomersAdmin() {
   const { confirm, notify } = useUI();
+  const { hasPerm } = useAuth();
   const [query, setQuery] = useState("");
+  const [refundOpen, setRefundOpen] = useState(false);
   const debounced = useDebouncedValue(query, 300);
   const [hits, setHits] = useState<UserSearchHit[]>([]);
   const [selected, setSelected] = useState<{ email: string; name: string; balance: number } | null>(null);
@@ -172,6 +175,16 @@ export default function CustomersAdmin() {
                 <div style={{ fontSize: 20, fontWeight: 700, color: selected.balance > 0 ? "var(--ok)" : "var(--text-dim)" }}>
                   {selected.balance.toLocaleString("ru-RU")} ₽
                 </div>
+                {selected.balance > 0 && hasPerm("manage_refunds") && (
+                  <button
+                    type="button"
+                    className="ghost btn-sm"
+                    style={{ marginTop: 8 }}
+                    onClick={() => setRefundOpen(true)}
+                  >
+                    Вернуть средства
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -220,6 +233,23 @@ export default function CustomersAdmin() {
             </>
           )}
         </>
+      )}
+
+      {refundOpen && selected && (
+        <BalanceRefundModal
+          email={selected.email}
+          balance={selected.balance}
+          onClose={() => setRefundOpen(false)}
+          onDone={async () => {
+            setRefundOpen(false);
+            await loadBookings(selected.email);
+            await notify({
+              title: "Запрос создан",
+              message: "Сумма списана с баланса, запрос появился в разделе «Возвраты».",
+              kind: "success",
+            });
+          }}
+        />
       )}
 
       {transferFor && (
@@ -324,6 +354,98 @@ function BookingCard({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function BalanceRefundModal({
+  email, balance, onClose, onDone,
+}: {
+  email: string;
+  balance: number;
+  onClose: () => void;
+  onDone: () => void | Promise<void>;
+}) {
+  const { notify } = useUI();
+  const [amount, setAmount] = useState<string>(String(Math.round(balance)));
+  const [fullName, setFullName] = useState("");
+  const [card, setCard] = useState("");
+  const [bank, setBank] = useState("");
+  const [comment, setComment] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    const amt = Number(amount);
+    if (!Number.isFinite(amt) || amt <= 0) {
+      await notify({ title: "Проверьте сумму", message: "Введите сумму больше нуля.", kind: "error" });
+      return;
+    }
+    if (amt > balance + 1e-6) {
+      await notify({ title: "Слишком большая сумма", message: `На балансе только ${balance.toFixed(0)} ₽.`, kind: "error" });
+      return;
+    }
+    setBusy(true);
+    try {
+      await api.post("/api/admin/balance-refund-request", {
+        email,
+        amount: amt,
+        payout_full_name: fullName.trim() || null,
+        payout_card_or_sbp: card.trim() || null,
+        payout_bank: bank.trim() || null,
+        payout_comment: comment.trim() || null,
+      });
+      await onDone();
+    } catch (e: any) {
+      await notify({ title: "Ошибка", message: e.message, kind: "error" });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="ui-backdrop" role="dialog" aria-modal="true" onClick={onClose}>
+      <div className="ui-dialog" style={{ maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
+        <h3 className="ui-dialog-title">Вернуть средства с баланса</h3>
+        <div className="ui-dialog-body">
+          Баланс {email}: <b>{balance.toFixed(0)} ₽</b>. Укажите сумму к возврату — она сразу
+          спишется с баланса, а запрос появится в разделе «Возвраты». Реквизиты можно ввести
+          здесь или позже в «Возвратах».
+        </div>
+        <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+          <div className="field" style={{ margin: 0 }}>
+            <label>Сумма к возврату, ₽ *</label>
+            <input
+              type="number"
+              min={1}
+              max={Math.round(balance)}
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+            />
+          </div>
+          <div className="field" style={{ margin: 0 }}>
+            <label>ФИО получателя</label>
+            <input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Иванов Иван Иванович" />
+          </div>
+          <div className="field" style={{ margin: 0 }}>
+            <label>Карта или телефон СБП</label>
+            <input value={card} onChange={(e) => setCard(e.target.value)} placeholder="2200 1234 5678 9012 или +7 999..." />
+          </div>
+          <div className="field" style={{ margin: 0 }}>
+            <label>Банк</label>
+            <input value={bank} onChange={(e) => setBank(e.target.value)} placeholder="Сбербанк, Тинькофф..." />
+          </div>
+          <div className="field" style={{ margin: 0 }}>
+            <label>Комментарий</label>
+            <input value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Например: переводить на СБП" />
+          </div>
+        </div>
+        <div className="ui-dialog-actions">
+          <button type="button" className="ghost" onClick={onClose} disabled={busy}>Отмена</button>
+          <button type="button" className="primary" onClick={submit} disabled={busy}>
+            {busy && <Spinner />}Создать возврат
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

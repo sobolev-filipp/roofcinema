@@ -20,6 +20,8 @@ type ExternalHit = {
   imdb_id: string | null;
   imdb_rating: number | null;
   kinopoisk_rating: number | null;
+  already_added?: boolean;
+  existing_movie_id?: number | null;
 };
 type SearchResp = {
   configured: boolean;
@@ -304,16 +306,19 @@ export default function MovieAdmin() {
                   <h3 style={{ marginTop: 24 }}>Найдено во внешних источниках</h3>
                   <div className="search-hits">
                     {searchResult.external.map((h, i) => (
-                      <div key={i} className="card search-hit">
+                      <div key={i} className={"card search-hit" + (h.already_added ? " is-added" : "")}>
                         {h.poster_url ? (
                           <img src={h.poster_url} alt="" style={{ width: 70, height: 105, objectFit: "cover", borderRadius: 6 }} />
                         ) : (
                           <div style={{ width: 70, height: 105, background: "var(--bg-soft)", borderRadius: 6 }} />
                         )}
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div className="row gap" style={{ alignItems: "baseline" }}>
+                          <div className="row gap" style={{ alignItems: "baseline", flexWrap: "wrap" }}>
                             <h3 style={{ margin: 0, fontSize: 16 }}>{h.title}</h3>
                             <span className="badge">{h.source}</span>
+                            {h.already_added && (
+                              <span className="badge" style={{ background: "var(--ok)", color: "#fff" }}>✓ уже в базе</span>
+                            )}
                           </div>
                           {h.original_title && h.original_title !== h.title && (
                             <div className="muted" style={{ fontSize: 13 }}>{h.original_title}</div>
@@ -334,9 +339,20 @@ export default function MovieAdmin() {
                               {h.description.length > 240 ? h.description.slice(0, 240) + "..." : h.description}
                             </p>
                           )}
-                          <button className="primary" style={{ marginTop: 8 }} onClick={() => fillFromHit(h)}>
-                            Использовать (можно отредактировать)
-                          </button>
+                          {h.already_added && h.existing_movie_id != null ? (
+                            <div className="row gap" style={{ marginTop: 8, flexWrap: "wrap", alignItems: "center" }}>
+                              <Link to={`/admin/movies/${h.existing_movie_id}`} className="btn-as-link">
+                                Открыть карточку
+                              </Link>
+                              <button type="button" className="ghost btn-sm" onClick={() => fillFromHit(h)}>
+                                Всё равно добавить
+                              </button>
+                            </div>
+                          ) : (
+                            <button className="primary" style={{ marginTop: 8 }} onClick={() => fillFromHit(h)}>
+                              Использовать (можно отредактировать)
+                            </button>
+                          )}
                         </div>
                       </div>
                     ))}

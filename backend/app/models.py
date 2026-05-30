@@ -21,8 +21,9 @@ class AdminPermission(str, Enum):
     manage_movies           = "manage_movies"             # добавлять/редактировать фильмы
     manage_screenings       = "manage_screenings"         # создавать/редактировать показы
     manage_bookings         = "manage_bookings"           # работать с бронированиями
+    manage_customers        = "manage_customers"          # раздел «Клиенты» (поиск гостя, баланс, возвраты)
     manage_transfers        = "manage_transfers"          # делать переносы броней
-    manage_cancellations    = "manage_cancellations"      # осуществлять отмены
+    manage_cancellations    = "manage_cancellations"      # раздел «Отмена показа»
     manual_booking          = "manual_booking"            # добавлять брони вручную
     manage_receipts         = "manage_receipts"           # работать с чеками
     manage_refunds          = "manage_refunds"            # работать с возвратами
@@ -272,6 +273,9 @@ class Screening(Base):
     ends_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     # Показ отменён администратором (≠ скрыт). Брони уходят в раздел «Отмена показа».
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Когда отправили админам письмо-итог после окончания показа (сводка по броням).
+    # Чтобы фоновая задача не слала повторно.
+    booking_summary_sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     booking_window_minutes: Mapped[int] = mapped_column(Integer, default=120, nullable=False)
     booking_opens_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
     booking_closes_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

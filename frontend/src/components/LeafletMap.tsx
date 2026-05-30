@@ -44,12 +44,28 @@ type Props = {
   height?: number;
 };
 
+/** Текущая тема из <html data-theme>. По умолчанию — тёмная. */
+function currentTheme(): "light" | "dark" {
+  return document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark";
+}
+
+/** URL тайлов CARTO под тему (без политических плашек в attribution). */
+function tileUrl(theme: "light" | "dark"): string {
+  const isRetina = typeof window !== "undefined" && window.devicePixelRatio > 1;
+  const r = isRetina ? "@2x" : "";
+  const style = theme === "light" ? "light_all" : "dark_all";
+  return `https://{s}.basemaps.cartocdn.com/${style}/{z}/{x}/{y}${r}.png`;
+}
+
 export default function LeafletMap({ lat, lng, radiusM, exact = false, height = 360 }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
+  const tileRef = useRef<any>(null);
 
   useEffect(() => {
     let cancelled = false;
+    let themeObserver: MutationObserver | null = null;
+
     ensureLeaflet().then(() => {
       if (cancelled || !ref.current || !window.L) return;
       const L = window.L;
@@ -67,19 +83,18 @@ export default function LeafletMap({ lat, lng, radiusM, exact = false, height = 
         attributionControl: true,
       }).setView([lat, lng], radiusM ? 12 : 15);
       mapRef.current = map;
-      // CARTO dark_all — тёмные тайлы под Netflix-дизайн, без политических плашек
-      // в attribution (которые показывает дефолтный OpenStreetMap).
-      const isRetina = typeof window !== "undefined" && window.devicePixelRatio > 1;
-      const r = isRetina ? "@2x" : "";
-      L.tileLayer(
-        `https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}${r}.png`,
-        {
+
+      const addTiles = (theme: "light" | "dark") => {
+        const layer = L.tileLayer(tileUrl(theme), {
           attribution:
             '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · <a href="https://carto.com/attributions">CARTO</a>',
           subdomains: "abcd",
           maxZoom: approxMode ? 12 : 19,
-        },
-      ).addTo(map);
+        });
+        layer.addTo(map);
+        tileRef.current = layer;
+      };
+      addTiles(currentTheme());
       // убираем дефолтную плашку "Leaflet" из attribution (оставляем только источники тайлов)
       if (map.attributionControl) {
         map.attributionControl.setPrefix(false);
@@ -100,13 +115,36 @@ export default function LeafletMap({ lat, lng, radiusM, exact = false, height = 
         }).addTo(map);
         map.fitBounds(circle.getBounds(), { padding: [20, 20] });
       }
+
+      // Контейнер часто инициализируется до того, как получит реальную высоту
+      // (условный рендер, вкладки, PWA). Без invalidateSize карта остаётся серой
+      // или «пропадает» — пересчитываем размер после первого кадра.
+      requestAnimationFrame(() => { if (!cancelled && mapRef.current) mapRef.current.invalidateSize(); });
+      setTimeout(() => { if (!cancelled && mapRef.current) mapRef.current.invalidateSize(); }, 300);
+
+      // Переключение темы сайта → меняем тайлы на лету, без пересоздания карты.
+      themeObserver = new MutationObserver(() => {
+        if (cancelled || !mapRef.current) return;
+        if (tileRef.current) {
+          mapRef.current.removeLayer(tileRef.current);
+          tileRef.current = null;
+        }
+        addTiles(currentTheme());
+      });
+      themeObserver.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ["data-theme"],
+      });
     });
+
     return () => {
       cancelled = true;
+      if (themeObserver) { themeObserver.disconnect(); themeObserver = null; }
       if (mapRef.current) {
         mapRef.current.remove();
         mapRef.current = null;
       }
+      tileRef.current = null;
     };
   }, [lat, lng, radiusM, exact]);
 
