@@ -14,7 +14,7 @@ from .models import Booking, BookingItem, BookingStatus, BookingTransfer, LoginC
 from .utils import render_template
 from .routers import (
     admin_bookings, admin_users, attendees, auth, bookings, cancellations, cities, geocode,
-    message_templates, movie_search, movies, payout_templates, post_show_receipts, receipts,
+    message_templates, movie_search, movies, payout_templates, post_show_receipts, qr, receipts,
     refunds, rooftops, screening_notify, screenings, seat_types, statistics, uploads, users, ws,
 )
 from .security import hash_password
@@ -748,6 +748,7 @@ app.include_router(cancellations.router)
 app.include_router(statistics.router)
 app.include_router(uploads.router)
 app.include_router(geocode.router)
+app.include_router(qr.router)
 app.include_router(ws.router)
 
 # Статика для загруженных файлов

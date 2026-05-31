@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import { Spinner } from "../components/Loaders";
@@ -14,11 +14,24 @@ const ROLE_LABEL: Record<string, string> = {
 };
 
 export default function ProfilePage() {
-  const { user, refresh } = useAuth();
+  const { user, refresh, logout } = useAuth();
   const { theme, setTheme } = useTheme();
-  const { notify } = useUI();
+  const { notify, confirm } = useUI();
+  const nav = useNavigate();
   const [refundOpen, setRefundOpen] = useState(false);
   if (!user) return null;
+
+  async function doLogout() {
+    const ok = await confirm({
+      title: "Выйти из аккаунта?",
+      message: "Вы выйдете на этом устройстве. Войти снова можно в любой момент.",
+      confirmText: "Выйти",
+      danger: true,
+    });
+    if (!ok) return;
+    logout();
+    nav("/");
+  }
 
   const balance = Number(user.balance);
   const showInstall = !isStandalone();
@@ -164,6 +177,19 @@ export default function ProfilePage() {
                 ☀ Светлая
               </button>
             </div>
+          </div>
+        </div>
+
+        {/* Выход из аккаунта */}
+        <div className="card profile-setting-card">
+          <div style={{ flex: 1 }}>
+            <div className="pl-title">Аккаунт</div>
+            <div className="muted" style={{ fontSize: 13, marginBottom: 10 }}>
+              Выход из аккаунта на этом устройстве
+            </div>
+            <button type="button" className="ghost danger-on-hover btn-block" onClick={doLogout}>
+              Выйти из аккаунта
+            </button>
           </div>
         </div>
       </div>

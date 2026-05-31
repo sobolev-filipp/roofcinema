@@ -1,12 +1,9 @@
 import { useState } from "react";
-import type { Booking } from "../api";
+import { qrImageUrl, type Booking } from "../api";
 import { STATUS_LABELS } from "../lib/bookingStatus";
 
 const fmtDateTime = (iso: string) =>
   new Date(iso).toLocaleString("ru-RU", { dateStyle: "long", timeStyle: "short" });
-
-const qrUrl = (token: string) =>
-  `https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&qzone=1&color=111111&bgcolor=ffffff&data=${encodeURIComponent(token)}`;
 
 type Props = { booking: Booking };
 
@@ -45,7 +42,7 @@ export default function TicketCard({ booking }: Props) {
       <div className="ticket-expand">
         <div className="ticket-perforation" />
         <div className="ticket-qr">
-          <img src={qrUrl(booking.qr_token)} alt="QR-код брони" loading="lazy" />
+          <img src={qrImageUrl(booking.qr_token)} alt="QR-код брони" loading="lazy" />
         </div>
         <div className="ticket-codes">
           <div className="muted-2" style={{ fontSize: 11 }}>Код для ручного входа</div>

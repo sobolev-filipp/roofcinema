@@ -7,6 +7,7 @@ import mimetypes
 import smtplib
 from email import encoders
 from email.mime.base import MIMEBase
+from email.mime.image import MIMEImage
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formataddr
@@ -36,8 +37,17 @@ def _open_smtp(s, timeout: int = 30):
     return smtp
 
 
-def send_email(to: str, subject: str, body_text: str, body_html: str | None = None) -> bool:
-    """Отправляет письмо. Возвращает True если отправили (или вывели в консоль)."""
+def send_email(
+    to: str,
+    subject: str,
+    body_text: str,
+    body_html: str | None = None,
+    inline_images: dict[str, bytes] | None = None,
+) -> bool:
+    """Отправляет письмо. Возвращает True если отправили (или вывели в консоль).
+
+    inline_images — встроенные картинки {cid: png_bytes}; на них можно ссылаться
+    в body_html через <img src="cid:КЛЮЧ">. Используется для QR в письме «После оплаты»."""
     s = get_settings()
     if not s.SMTP_HOST:
         # dev-режим
@@ -46,13 +56,27 @@ def send_email(to: str, subject: str, body_text: str, body_html: str | None = No
         return True
 
     try:
-        msg = MIMEMultipart("alternative")
+        # Структура: при наличии inline-картинок — multipart/related, внутри которого
+        # multipart/alternative (text + html). Иначе обычный alternative.
+        alt = MIMEMultipart("alternative")
+        alt.attach(MIMEText(body_text, "plain", "utf-8"))
+        if body_html:
+            alt.attach(MIMEText(body_html, "html", "utf-8"))
+
+        if inline_images:
+            msg = MIMEMultipart("related")
+            msg.attach(alt)
+            for cid, png in inline_images.items():
+                img = MIMEImage(png, _subtype="png")
+                img.add_header("Content-ID", f"<{cid}>")
+                img.add_header("Content-Disposition", "inline", filename=f"{cid}.png")
+                msg.attach(img)
+        else:
+            msg = alt
+
         msg["Subject"] = subject
         msg["From"] = formataddr(("Кино на крыше", s.SMTP_FROM))
         msg["To"] = to
-        msg.attach(MIMEText(body_text, "plain", "utf-8"))
-        if body_html:
-            msg.attach(MIMEText(body_html, "html", "utf-8"))
 
         with _open_smtp(s) as smtp:
             smtp.sendmail(s.SMTP_FROM, [to], msg.as_string())

@@ -56,6 +56,15 @@ export const api = {
   },
 };
 
+/** URL картинки QR-кода с нашего сервера (раньше брали с api.qrserver.com,
+ *  он у части пользователей открывался долго/блокировался).
+ *  absolute=true — полный URL с доменом: нужен для текста, который копируют в
+ *  мессенджер (относительная ссылка вне приложения не открывается). */
+export function qrImageUrl(token: string, absolute = false): string {
+  const path = `/api/qr/${encodeURIComponent(token)}.png`;
+  return absolute ? `${window.location.origin}${path}` : path;
+}
+
 export type User = {
   id: number;
   email: string;

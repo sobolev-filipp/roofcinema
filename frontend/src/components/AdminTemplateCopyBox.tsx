@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { api, type Booking, type MessageTemplate, type MessageTemplateKind, type Screening } from "../api";
+import { api, qrImageUrl, type Booking, type MessageTemplate, type MessageTemplateKind, type Screening } from "../api";
 import { formatEndsAt } from "../lib/screening";
 import { useUI } from "../ui";
 
@@ -27,9 +27,6 @@ function fmtUtcInTz(iso: string, tz: string): string {
     timeZone: tz,
   });
 }
-
-const qrImageUrl = (token: string) =>
-  `https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&qzone=1&color=111111&bgcolor=ffffff&data=${encodeURIComponent(token)}`;
 
 type Props = {
   booking: Booking;
@@ -123,7 +120,7 @@ export default function AdminTemplateCopyBox({ booking }: Props) {
       booking_link: `${window.location.origin}/bookings/${booking.id}`,
       claim_link: "",
       short_code: booking.short_code,
-      qr_image_link: qrImageUrl(booking.qr_token),
+      qr_image_link: qrImageUrl(booking.qr_token, true),
       payout_details: buildPayoutDetails(),
       items: buildItems(),
     };
@@ -174,6 +171,26 @@ export default function AdminTemplateCopyBox({ booking }: Props) {
         </button>
         <Link to="/admin/templates" className="ghost btn-as-link">Шаблоны →</Link>
       </div>
+
+      {isPaid && booking.qr_token && (
+        <div className="row gap" style={{ marginTop: 12, alignItems: "center", flexWrap: "wrap" }}>
+          <img
+            src={qrImageUrl(booking.qr_token)}
+            alt="QR-код брони"
+            width={120}
+            height={120}
+            style={{ background: "#fff", padding: 6, borderRadius: 8, flexShrink: 0 }}
+          />
+          <div className="muted" style={{ fontSize: 12, maxWidth: 260 }}>
+            QR-код для входа. Можно сохранить картинку и отправить гостю напрямую.
+            В письме «После оплаты» он встроен автоматически.
+            <div style={{ marginTop: 4 }}>
+              Код входа: <b>{booking.short_code}</b>
+            </div>
+          </div>
+        </div>
+      )}
+
       {(!manualTpl || !postTpl) && (
         <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>
           {!manualTpl && <>Не настроен шаблон «Ручное бронирование». </>}

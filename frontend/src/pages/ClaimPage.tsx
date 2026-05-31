@@ -1,15 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { api, ApiError, type ClaimInfo } from "../api";
+import { api, ApiError, qrImageUrl, type ClaimInfo } from "../api";
 import { useAuth } from "../auth";
 import { Skeleton } from "../components/Loaders";
 
 const fmt = (iso: string) =>
   new Date(iso).toLocaleString("ru-RU", { dateStyle: "long", timeStyle: "short" });
-
-function qrImageUrl(token: string, size = 240): string {
-  return `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(token)}`;
-}
 
 export default function ClaimPage() {
   const { token } = useParams();

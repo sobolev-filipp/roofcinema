@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   api,
+  qrImageUrl,
   type Booking,
   type City,
   type MessageTemplate,
@@ -232,8 +233,6 @@ export default function ManualBookingAdmin() {
   }
 
   const PAID_STATUSES = new Set(["paid", "paid_by_balance", "attended"]);
-  const qrImageUrl = (token: string) =>
-    `https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&qzone=1&color=111111&bgcolor=ffffff&data=${encodeURIComponent(token)}`;
 
   // Копирование сообщения пользователю. Для оплаченной брони берём шаблон
   // «После оплаты» (QR + код), для неоплаченной — «Ручное бронирование» (для оплаты).
@@ -265,7 +264,7 @@ export default function ManualBookingAdmin() {
       booking_link: `${window.location.origin}/bookings/${createdBooking.id}`,
       claim_link: "",
       short_code: createdBooking.short_code,
-      qr_image_link: qrImageUrl(createdBooking.qr_token),
+      qr_image_link: qrImageUrl(createdBooking.qr_token, true),
     };
     try {
       const res = await api.post<{ rendered: string }>("/api/admin/message-templates/preview", {
