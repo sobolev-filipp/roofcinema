@@ -444,6 +444,9 @@ class RefundRequest(Base):
     payout_card_or_sbp: Mapped[str | None] = mapped_column(String(64), nullable=True)
     payout_bank: Mapped[str | None] = mapped_column(String(120), nullable=True)
     payout_comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Необязательный чек о переводе, который админ прикрепляет при отметке «выполнено».
+    # Если задан — уходит во вложении в письме о завершении возврата.
+    receipt_file_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
 
     created_by_admin_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     completed_by_admin_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
@@ -500,6 +503,7 @@ class MessageTemplateKind(str, Enum):
     user_cancel_notice = "user_cancel_notice"       # письмо пользователю об отмене брони
     admin_cancel_screening = "admin_cancel_screening"  # отмена всего показа
     refund_link = "refund_link"                     # сопровождение ссылки для возврата средств
+    refund_completed = "refund_completed"           # уведомление о выполненном возврате средств
     custom = "custom"                                # произвольный шаблон
 
 

@@ -20,7 +20,7 @@ from .routers import (
 from .security import hash_password
 from .utils import now_in_tz
 from .ws_manager import manager as ws_manager
-from datetime import timedelta
+from datetime import datetime, timedelta
 from sqlalchemy.orm import joinedload
 
 import logging
@@ -150,7 +150,8 @@ async def _notify_loop():
         await asyncio.sleep(60)
 
 
-_POST_SHOW_PAID_STATUSES = ("paid", "paid_by_balance", "attended")
+# no_show тоже считается оплаченной (деньги получены) — чек после показа всё равно нужен
+_POST_SHOW_PAID_STATUSES = ("paid", "paid_by_balance", "attended", "no_show")
 
 
 def _items_text_for(b: Booking) -> str:
@@ -409,18 +410,103 @@ async def _post_show_receipt_loop():
 
 
 _SUMMARY_PAID_STATUSES = ("paid", "paid_by_balance", "attended")
+_NO_SHOW_STATUSES = ("paid", "paid_by_balance")
+
+
+def _screening_end_local(s: Screening) -> datetime:
+    """Локальное наивное время окончания показа: ends_at → starts_at+duration → +3ч."""
+    if s.ends_at:
+        return s.ends_at
+    if s.movie and s.movie.duration_min:
+        return s.starts_at + timedelta(minutes=int(s.movie.duration_min))
+    return s.starts_at + timedelta(hours=3)
+
+
+def _send_screening_summary_for(db, s: Screening) -> None:
+    """Собирает сводку по броням показа и шлёт письмо админам.
+    Получатели: владельцы (super_admin) + админы крыши с правом броней —
+    дедуплицируются по email, чтобы один человек не получил два письма."""
+    from .email_service import send_screening_summary
+    from .models import RooftopAdmin
+
+    bookings = (
+        db.query(Booking)
+        .options(joinedload(Booking.items).joinedload(BookingItem.screening_seat_type))
+        .filter(
+            Booking.screening_id == s.id,
+            Booking.status.in_(_SUMMARY_PAID_STATUSES),
+        )
+        .all()
+    )
+    seat_agg: dict[str, list] = {}  # name -> [qty, amount]
+    total_amount = 0.0
+    guests = 0
+    for b in bookings:
+        total_amount += float(b.total_amount or 0)
+        for it in b.items:
+            cap = it.screening_seat_type.capacity if it.screening_seat_type else 1
+            guests += int(it.qty) * int(cap or 1)
+            agg = seat_agg.setdefault(it.name, [0, 0.0])
+            agg[0] += int(it.qty)
+            agg[1] += float(it.price_each or 0) * int(it.qty)
+    seat_lines = [f"{name} ×{qty} — {amount:.0f} ₽" for name, (qty, amount) in seat_agg.items()]
+
+    recipients: dict[str, str] = {}
+    supers = (
+        db.query(User)
+        .filter(User.is_active.is_(True), User.role == UserRole.super_admin.value)
+        .all()
+    )
+    for u in supers:
+        if u.email:
+            recipients[u.email.strip().lower()] = u.email
+    links = (
+        db.query(RooftopAdmin)
+        .options(joinedload(RooftopAdmin.user))
+        .filter(
+            RooftopAdmin.rooftop_id == s.rooftop_id,
+            RooftopAdmin.can_manage_bookings.is_(True),
+        )
+        .all()
+    )
+    for lnk in links:
+        u = lnk.user
+        if u and u.is_active and u.email:
+            recipients[u.email.strip().lower()] = u.email
+
+    starts_text = s.starts_at.strftime("%d.%m.%Y %H:%M")
+    movie_title = s.movie.title if s.movie else ""
+    rooftop_name = s.rooftop.name if s.rooftop else ""
+    for email in recipients.values():
+        try:
+            send_screening_summary(
+                email,
+                movie_title=movie_title,
+                starts_at_text=starts_text,
+                rooftop_name=rooftop_name,
+                seat_lines=seat_lines,
+                bookings_count=len(bookings),
+                guests_count=guests,
+                total_amount=total_amount,
+            )
+        except Exception:
+            log.exception("screening summary send failed screening_id=%s", s.id)
 
 
 async def _screening_summary_loop():
-    """После окончания каждого показа шлёт письмо-итог админам:
-    сколько и какие типы мест забронированы, число гостей и общая сумма.
-    Получатели: владельцы (super_admin) + админы, привязанные к крыше показа
-    с правом управления бронями (RooftopAdmin.can_manage_bookings).
-    Идемпотентно: после отправки проставляется screening.booking_summary_sent_at."""
-    from datetime import datetime
+    """Две задачи по каждому показу (раз в 5 минут):
 
-    from .email_service import send_screening_summary
-    from .models import RooftopAdmin
+    1) Сводка админам — после ЗАКРЫТИЯ БРОНИРОВАНИЯ (booking_closes_at, иначе старт
+       показа), а не после окончания показа. Письмо: сколько и какие места
+       забронированы, гости, общая сумма. Получатели — владельцы + админы крыши
+       с правом броней (дедуп по email). Идемпотентно: claim-first — сначала
+       проставляем booking_summary_sent_at и коммитим, потом шлём, чтобы при любом
+       перезапуске цикла письмо не ушло дважды.
+
+    2) No-show — после ОКОНЧАНИЯ показа брони в статусе paid/paid_by_balance,
+       которые не отметили как пришедшие, переводятся в no_show (для истории гостя).
+       Брони с отменённого показа (needs_cancel_resolution) не трогаем."""
+    from datetime import datetime
 
     while True:
         try:
@@ -432,11 +518,8 @@ async def _screening_summary_loop():
                         joinedload(Screening.movie),
                         joinedload(Screening.rooftop).joinedload(Rooftop.city),
                     )
-                    .filter(
-                        Screening.cancelled_at.is_(None),
-                        Screening.booking_summary_sent_at.is_(None),
-                    )
-                    .limit(500)
+                    .filter(Screening.cancelled_at.is_(None))
+                    .limit(1000)
                     .all()
                 )
                 for s in screenings:
@@ -445,86 +528,34 @@ async def _screening_summary_loop():
                         if s.rooftop and s.rooftop.city else None
                     )
                     local_now = now_in_tz(tz_name)
-                    if s.ends_at:
-                        end_at = s.ends_at
-                    elif s.movie and s.movie.duration_min:
-                        end_at = s.starts_at + timedelta(minutes=int(s.movie.duration_min))
-                    else:
-                        end_at = s.starts_at + timedelta(hours=3)
-                    if end_at > local_now:
-                        continue  # показ ещё не закончился
 
-                    bookings = (
-                        db.query(Booking)
-                        .options(joinedload(Booking.items).joinedload(BookingItem.screening_seat_type))
-                        .filter(
-                            Booking.screening_id == s.id,
-                            Booking.status.in_(_SUMMARY_PAID_STATUSES),
-                        )
-                        .all()
-                    )
-                    seat_agg: dict[str, list] = {}  # name -> [qty, amount]
-                    total_amount = 0.0
-                    guests = 0
-                    for b in bookings:
-                        total_amount += float(b.total_amount or 0)
-                        for it in b.items:
-                            cap = it.screening_seat_type.capacity if it.screening_seat_type else 1
-                            guests += int(it.qty) * int(cap or 1)
-                            agg = seat_agg.setdefault(it.name, [0, 0.0])
-                            agg[0] += int(it.qty)
-                            agg[1] += float(it.price_each or 0) * int(it.qty)
-                    seat_lines = [
-                        f"{name} ×{qty} — {amount:.0f} ₽"
-                        for name, (qty, amount) in seat_agg.items()
-                    ]
+                    # 1) Сводка после закрытия бронирования
+                    if s.booking_summary_sent_at is None:
+                        close_at = s.booking_closes_at or s.starts_at
+                        if close_at <= local_now:
+                            # claim-first: фиксируем факт отправки ДО рассылки
+                            s.booking_summary_sent_at = datetime.utcnow()
+                            db.commit()
+                            try:
+                                _send_screening_summary_for(db, s)
+                            except Exception:
+                                log.exception("summary build failed screening_id=%s", s.id)
 
-                    # Получатели: владельцы + админы крыши с правом броней
-                    recipients: dict[str, str] = {}
-                    supers = (
-                        db.query(User)
-                        .filter(
-                            User.is_active.is_(True),
-                            User.role == UserRole.super_admin.value,
-                        )
-                        .all()
-                    )
-                    for u in supers:
-                        if u.email:
-                            recipients[u.email.lower()] = u.email
-                    links = (
-                        db.query(RooftopAdmin)
-                        .options(joinedload(RooftopAdmin.user))
-                        .filter(
-                            RooftopAdmin.rooftop_id == s.rooftop_id,
-                            RooftopAdmin.can_manage_bookings.is_(True),
-                        )
-                        .all()
-                    )
-                    for lnk in links:
-                        u = lnk.user
-                        if u and u.is_active and u.email:
-                            recipients[u.email.lower()] = u.email
-
-                    starts_text = s.starts_at.strftime("%d.%m.%Y %H:%M")
-                    movie_title = s.movie.title if s.movie else ""
-                    rooftop_name = s.rooftop.name if s.rooftop else ""
-                    for email in recipients.values():
-                        try:
-                            send_screening_summary(
-                                email,
-                                movie_title=movie_title,
-                                starts_at_text=starts_text,
-                                rooftop_name=rooftop_name,
-                                seat_lines=seat_lines,
-                                bookings_count=len(bookings),
-                                guests_count=guests,
-                                total_amount=total_amount,
+                    # 2) No-show после окончания показа
+                    if _screening_end_local(s) <= local_now:
+                        stale = (
+                            db.query(Booking)
+                            .filter(
+                                Booking.screening_id == s.id,
+                                Booking.status.in_(_NO_SHOW_STATUSES),
+                                Booking.needs_cancel_resolution.is_(False),
                             )
-                        except Exception:
-                            log.exception("screening summary send failed screening_id=%s", s.id)
-                    s.booking_summary_sent_at = datetime.utcnow()
-                    db.commit()
+                            .all()
+                        )
+                        if stale:
+                            for b in stale:
+                                b.status = BookingStatus.no_show.value
+                            db.commit()
             finally:
                 db.close()
         except Exception:
@@ -631,6 +662,13 @@ def _migrate_columns() -> None:
             # booking_id уже nullable, но колонки email ещё нет — добавляем точечно.
             conn.execute(text("ALTER TABLE refund_requests ADD COLUMN email VARCHAR(255)"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_refund_requests_email ON refund_requests (email)"))
+            conn.commit()
+
+    # refund_requests: чек о переводе (прикладывается при отметке «выполнено»).
+    # Выполняется ПОСЛЕ возможной пересборки выше, чтобы колонка не потерялась.
+    with engine.connect() as conn:
+        if "receipt_file_url" not in cols("refund_requests"):
+            conn.execute(text("ALTER TABLE refund_requests ADD COLUMN receipt_file_url VARCHAR(512)"))
             conn.commit()
 
     # Разовый перенос балансов из users.balance в email_balances (по email).

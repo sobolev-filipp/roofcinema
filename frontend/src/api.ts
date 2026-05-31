@@ -48,6 +48,12 @@ export const api = {
       body: fd.toString(),
     });
   },
+  /** POST multipart/form-data. Опциональный файл прикладывается полем `file`. */
+  postFile: <T>(p: string, file?: File | null) => {
+    const fd = new FormData();
+    if (file) fd.append("file", file);
+    return request<T>(p, { method: "POST", body: fd });
+  },
 };
 
 export type User = {
@@ -168,6 +174,7 @@ export type MessageTemplateKind =
   | "user_cancel_notice"
   | "admin_cancel_screening"
   | "refund_link"
+  | "refund_completed"
   | "custom";
 
 export type MessageTemplate = {
@@ -190,6 +197,7 @@ export const TEMPLATE_KIND_LABELS: Record<MessageTemplateKind, string> = {
   user_cancel_notice: "Отмена брони (письмо пользователю)",
   admin_cancel_screening: "Отмена показа целиком",
   refund_link: "Возврат средств — ссылка на форму",
+  refund_completed: "Возврат средств — уведомление о выполнении",
   custom: "Произвольный",
 };
 
@@ -205,6 +213,7 @@ export type RefundRequest = {
   payout_card_or_sbp: string | null;
   payout_bank: string | null;
   payout_comment: string | null;
+  receipt_file_url: string | null;
   created_at: string;
   link_sent_at: string | null;
   filled_at: string | null;

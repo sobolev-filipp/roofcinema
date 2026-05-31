@@ -84,7 +84,7 @@ export default function CancellationsAdmin() {
 
   async function moneyRefund(it: CancelItem) {
     const ok = await confirm({
-      title: "Запросить возврат денег?",
+      title: "Запросить возврат средств?",
       message: `Пользователю ${it.full_name} (${it.email}) уйдёт письмо со ссылкой на форму реквизитов. После заполнения возврат появится в разделе «Возвраты».`,
       confirmText: "Создать запрос",
     });
@@ -168,7 +168,7 @@ export default function CancellationsAdmin() {
                     )}
                   </div>
 
-                  <div className="row gap" style={{ marginTop: 12, flexWrap: "wrap" }}>
+                  <div className="cancel-actions" style={{ marginTop: 12 }}>
                     <button
                       onClick={() => setTransferFor({ item: it, target: null })}
                       disabled={isBusy}
@@ -179,7 +179,7 @@ export default function CancellationsAdmin() {
                       {isBusy && <Spinner />}→ на баланс
                     </button>
                     <button className="primary" onClick={() => moneyRefund(it)} disabled={isBusy}>
-                      Возврат денег
+                      Возврат средств
                     </button>
                   </div>
                 </div>

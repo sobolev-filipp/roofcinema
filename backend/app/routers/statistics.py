@@ -20,7 +20,8 @@ router = APIRouter(
 )
 
 # Статусы, которые считаются «оплаченными» — для выручки и подсчёта посетителей
-_PAID_STATUSES = {"paid", "paid_by_balance", "attended"}
+# (no_show тоже — деньги получены, гость просто не пришёл)
+_PAID_STATUSES = {"paid", "paid_by_balance", "attended", "no_show"}
 
 # Локализованные сокращения месяцев
 _MONTHS_RU = [

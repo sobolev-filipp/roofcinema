@@ -17,7 +17,7 @@ export default function Rating({ imdb, kinopoisk, compact = false }: Props) {
     const value = imdb ?? kinopoisk!;
     const label = imdb ? "IMDb" : "Кп";
     return (
-      <span className="rating-badge" style={{ color: color(value) }}>
+      <span className="rating-pill" style={{ color: color(value) }}>
         <b>{value.toFixed(1)}</b>
         <span style={{ opacity: 0.6, marginLeft: 4, fontSize: 10 }}>{label}</span>
       </span>
@@ -26,7 +26,7 @@ export default function Rating({ imdb, kinopoisk, compact = false }: Props) {
   return (
     <div className="row gap">
       {imdb != null && (
-        <span className="rating-badge" style={{ color: color(imdb) }}>
+        <span className="rating-pill" style={{ color: color(imdb) }}>
           <b>{imdb.toFixed(1)}</b>
           <span style={{ opacity: 0.6, marginLeft: 4, fontSize: 11 }}>IMDb</span>
         </span>

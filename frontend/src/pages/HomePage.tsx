@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { api, type City, type Screening } from "../api";
 import { useAuth } from "../auth";
 import CitySelector from "../components/CitySelector";
@@ -24,6 +24,7 @@ type Group = {
 
 export default function HomePage() {
   const { user } = useAuth();
+  const nav = useNavigate();
   const [cities, setCities] = useState<City[]>([]);
   const [cityId, setCityId] = useState<number | null>(null);
   const [range, setRange] = useState<DateRange>(defaultRange("day"));
@@ -134,9 +135,12 @@ export default function HomePage() {
                   <div className="screening-rows">
                     {screenings.slice(0, 4).map((s) => {
                       const cityName = cityById.get(s.rooftop.city_id);
-                      const place = showCity && cityName
-                        ? `${cityName} · ${s.rooftop.name}`
-                        : s.rooftop.name;
+                      const openRooftop = (e: React.MouseEvent) => {
+                        // карточка обёрнута в <Link> на фильм — гасим переход
+                        e.preventDefault();
+                        e.stopPropagation();
+                        nav(`/rooftops/${s.rooftop.id}`);
+                      };
                       return (
                         <div key={s.id} className="screening-row">
                           <span className="srow-time">
@@ -144,7 +148,19 @@ export default function HomePage() {
                               ? TIME_RU(s.starts_at)
                               : `${DATE_RU(s.starts_at)} ${TIME_RU(s.starts_at)}`}
                           </span>
-                          <span className="srow-place">{place}</span>
+                          <span className="srow-place">
+                            {showCity && cityName ? `${cityName} · ` : ""}
+                            <span
+                              className="srow-rooftop-link"
+                              role="link"
+                              tabIndex={0}
+                              onClick={openRooftop}
+                              onKeyDown={(e) => { if (e.key === "Enter") openRooftop(e as any); }}
+                              title="Открыть страницу крыши"
+                            >
+                              {s.rooftop.name}
+                            </span>
+                          </span>
                         </div>
                       );
                     })}

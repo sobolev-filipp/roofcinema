@@ -1085,6 +1085,21 @@ label {
 .rating-badge b { font-weight: 700; font-size: 12px; }
 .rb-label { opacity: 0.6; margin-left: 6px; font-size: 9px; font-weight: 500; }
 
+/* Рейтинг ВНЕ постера (страница фильма): подложка по теме, цвет числа —
+   из inline-стиля компонента Rating. В отличие от .rating-badge (поверх
+   картинки) фон здесь светлый в светлой теме. */
+.rating-pill {
+  display: inline-flex;
+  align-items: baseline;
+  font-size: var(--fs-sm);
+  padding: 3px 9px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--r-xs);
+  white-space: nowrap;
+}
+.rating-pill b { font-weight: 700; font-size: 13px; }
+
 .age-badge {
   position: absolute;
   top: var(--s-2);
@@ -1136,6 +1151,14 @@ label {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.srow-rooftop-link {
+  color: var(--text);
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: var(--border-strong);
+  text-underline-offset: 2px;
+}
+.srow-rooftop-link:hover { color: var(--accent); text-decoration-color: var(--accent); }
 
 /* =========================================================================
    СТРАНИЦА ФИЛЬМА — hero + trailer + stills
@@ -2255,6 +2278,14 @@ button.primary.danger:hover { background: #c62828; border-color: #c62828; }
 }
 .templates-list { display: flex; flex-direction: column; gap: var(--s-3); margin-top: var(--s-2); }
 .template-card.template-default { border-color: var(--accent); }
+/* Кнопки решения в карточке «Отмена показа»: столбиком, во всю ширину карточки. */
+.cancel-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.cancel-actions > button { width: 100%; }
+
 /* admin refunds list */
 .refunds-list { display: flex; flex-direction: column; gap: var(--s-3); margin-top: var(--s-2); }
 .refund-card .row.gap { flex-shrink: 0; }

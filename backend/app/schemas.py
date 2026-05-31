@@ -358,6 +358,7 @@ ALLOWED_TEMPLATE_KINDS = (
     "user_cancel_notice",
     "admin_cancel_screening",
     "refund_link",
+    "refund_completed",
     "custom",
 )
 
@@ -410,6 +411,7 @@ class RefundRequestOut(BaseModel):
     payout_card_or_sbp: str | None = None
     payout_bank: str | None = None
     payout_comment: str | None = None
+    receipt_file_url: str | None = None
     created_at: datetime
     link_sent_at: datetime | None = None
     filled_at: datetime | None = None

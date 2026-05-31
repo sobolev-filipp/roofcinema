@@ -124,6 +124,11 @@ TEMPLATE_PLACEHOLDERS: dict[str, list[str]] = {
     "refund_link": [
         "{full_name}", "{movie}", "{amount}", "{refund_link}",
     ],
+    "refund_completed": [
+        # Уведомление о выполненном возврате средств. Если админ приложил чек —
+        # он уйдёт во вложении автоматически (в тексте указывать не нужно).
+        "{full_name}", "{city}", "{movie}", "{items}", "{amount}",
+    ],
     "custom": [
         "{full_name}", "{movie}", "{starts_at}", "{rooftop}", "{city}",
         "{amount}", "{booking_link}", "{claim_link}", "{refund_link}", "{reason}",

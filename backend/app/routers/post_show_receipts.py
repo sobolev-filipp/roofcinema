@@ -45,7 +45,8 @@ ALLOWED_EXT = {"pdf", "jpg", "jpeg", "png", "webp"}
 MAX_SIZE = 10 * 1024 * 1024  # 10 МБ — чеки могут быть PDF
 
 
-_PAID_STATUSES = {"paid", "paid_by_balance", "attended"}
+# no_show — гость не пришёл, но оплата была, чек после показа всё равно отправляем
+_PAID_STATUSES = {"paid", "paid_by_balance", "attended", "no_show"}
 
 
 def _booking_dict(b: Booking) -> dict:

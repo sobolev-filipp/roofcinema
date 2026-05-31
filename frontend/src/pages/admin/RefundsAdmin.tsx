@@ -25,7 +25,7 @@ type FillForm = {
 const emptyForm = (): FillForm => ({ fullName: "", card: "", bank: "", comment: "" });
 
 export default function RefundsAdmin() {
-  const { confirm, notify } = useUI();
+  const { notify } = useUI();
   const [tab, setTab] = useState<Tab>("filled");
   const [items, setItems] = useState<RefundRequest[]>([]);
   const [loading, setLoading] = useState(false);
@@ -36,6 +36,10 @@ export default function RefundsAdmin() {
   // Инлайн-форма ручного ввода реквизитов
   const [fillId, setFillId] = useState<number | null>(null);   // id карточки с открытой формой
   const [fillForm, setFillForm] = useState<FillForm>(emptyForm());
+
+  // Модалка «перевод выполнен» с необязательным чеком
+  const [completeFor, setCompleteFor] = useState<RefundRequest | null>(null);
+  const [completeFile, setCompleteFile] = useState<File | null>(null);
 
   async function reload() {
     setLoading(true); setErr(null);
@@ -64,17 +68,25 @@ export default function RefundsAdmin() {
     finally { setBusyId(null); }
   }
 
-  async function markCompleted(r: RefundRequest) {
-    const ok = await confirm({
-      title: "Перевод выполнен?",
-      message: `Подтвердите, что вы вручную перевели ${Number(r.amount).toFixed(0)} ₽ пользователю ${r.booking_full_name}. После этого запрос станет «выполнен» и не появится в активных.`,
-      confirmText: "Да, перевод выполнен",
-    });
-    if (!ok) return;
+  function openComplete(r: RefundRequest) {
+    setCompleteFile(null);
+    setCompleteFor(r);
+  }
+
+  async function submitComplete() {
+    if (!completeFor) return;
+    const r = completeFor;
     setBusyId(r.id);
     try {
-      await api.post(`/api/admin/refund-requests/${r.id}/mark-completed`);
+      await api.postFile(`/api/admin/refund-requests/${r.id}/mark-completed`, completeFile);
+      setCompleteFor(null);
+      setCompleteFile(null);
       await reload();
+      await notify({
+        title: "Возврат выполнен",
+        message: "Пользователю отправлено уведомление" + (completeFile ? " с чеком." : "."),
+        kind: "success",
+      });
     } catch (e: any) { await notify({ title: "Ошибка", message: e.message, kind: "error" }); }
     finally { setBusyId(null); }
   }
@@ -189,7 +201,7 @@ export default function RefundsAdmin() {
                     </button>
                   )}
                   {tab === "filled" && (
-                    <button className="primary" onClick={() => markCompleted(r)} disabled={busyId === r.id}>
+                    <button className="primary" onClick={() => openComplete(r)} disabled={busyId === r.id}>
                       Пометить как выполненный
                     </button>
                   )}
@@ -205,6 +217,12 @@ export default function RefundsAdmin() {
                     {r.payout_card_or_sbp && <div><b>Карта / СБП:</b> <code>{r.payout_card_or_sbp}</code></div>}
                     {r.payout_bank && <div><b>Банк:</b> {r.payout_bank}</div>}
                     {r.payout_comment && <div style={{ marginTop: 4 }}><b>Комментарий:</b> {r.payout_comment}</div>}
+                    {r.receipt_file_url && (
+                      <div style={{ marginTop: 4 }}>
+                        <b>Чек о переводе:</b>{" "}
+                        <a href={r.receipt_file_url} target="_blank" rel="noopener" className="rooftop-link">открыть</a>
+                      </div>
+                    )}
                   </div>
                 )
               ) : (
@@ -261,6 +279,41 @@ export default function RefundsAdmin() {
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {completeFor && (
+        <div className="ui-backdrop" role="dialog" aria-modal="true" onClick={() => busyId === null && setCompleteFor(null)}>
+          <div className="ui-dialog" style={{ maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
+            <h3 className="ui-dialog-title">Перевод выполнен?</h3>
+            <div className="ui-dialog-body">
+              Подтвердите, что вручную перевели <b>{Number(completeFor.amount).toFixed(0)} ₽</b>
+              {" "}пользователю {completeFor.booking_full_name || completeFor.booking_email}.
+              Ему уйдёт уведомление о возврате. Можно приложить чек о переводе (необязательно) —
+              тогда он отправится во вложении.
+            </div>
+            <div className="field" style={{ marginTop: 12 }}>
+              <label>Чек о переводе (необязательно)</label>
+              <input
+                type="file"
+                accept="image/*,application/pdf"
+                onChange={(e) => setCompleteFile(e.target.files?.[0] ?? null)}
+              />
+              {completeFile && (
+                <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                  Прикреплён: {completeFile.name}
+                </div>
+              )}
+            </div>
+            <div className="ui-dialog-actions">
+              <button type="button" className="ghost" onClick={() => setCompleteFor(null)} disabled={busyId !== null}>
+                Отмена
+              </button>
+              <button type="button" className="primary" onClick={submitComplete} disabled={busyId !== null}>
+                {busyId !== null ? "Сохраняем..." : "Да, перевод выполнен"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

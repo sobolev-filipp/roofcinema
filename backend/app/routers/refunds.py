@@ -10,8 +10,9 @@ from __future__ import annotations
 
 import secrets
 from datetime import datetime
+from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session, joinedload
 
@@ -19,7 +20,7 @@ from ..balance import debit_balance, get_balance, norm_email
 from ..config import get_settings
 from ..db import get_db
 from ..deps import get_current_user, require_admin_or_super, require_perm
-from ..email_service import send_email
+from ..email_service import send_email, send_email_with_attachment
 from ..models import (
     Booking,
     BookingStatus,
@@ -38,6 +39,84 @@ from ..schemas import (
 from ..utils import render_template
 
 router = APIRouter(tags=["refunds"])
+
+UPLOAD_DIR = Path(__file__).resolve().parents[2] / "uploads"
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+_RECEIPT_EXT = {"pdf", "jpg", "jpeg", "png", "webp"}
+_RECEIPT_MAX = 10 * 1024 * 1024  # 10 МБ
+
+
+def _refund_completed_context(rr: RefundRequest) -> dict:
+    """Плейсхолдеры для шаблона refund_completed: ФИО, город, показ, места, сумма."""
+    b = rr.booking
+    s = b.screening if b else None
+    if b:
+        items_text = "\n".join(
+            f"- {it.name} ×{it.qty} — {int(float(it.price_each) * it.qty)} ₽" for it in b.items
+        )
+        full_name = b.full_name
+        city = s.rooftop.city.name if (s and s.rooftop and s.rooftop.city) else ""
+        movie = s.movie.title if (s and s.movie) else ""
+    else:
+        items_text = ""
+        full_name = rr.payout_full_name or ""
+        city = ""
+        movie = "Возврат с баланса"
+    return {
+        "full_name": full_name,
+        "city": city,
+        "movie": movie,
+        "items": items_text,
+        "amount": f"{int(float(rr.amount))}",
+    }
+
+
+def _send_refund_completed_email(db: Session, rr: RefundRequest) -> None:
+    """Письмо о выполненном возврате по шаблону refund_completed.
+    Если у запроса прикреплён чек — отправляем письмо с вложением."""
+    to_email = (rr.booking.email if rr.booking else rr.email) or ""
+    if not to_email:
+        return
+    tpl = (
+        db.query(MessageTemplate)
+        .filter(MessageTemplate.kind == "refund_completed", MessageTemplate.is_default.is_(True))
+        .first()
+        or db.query(MessageTemplate).filter(MessageTemplate.kind == "refund_completed").first()
+    )
+    ctx = _refund_completed_context(rr)
+    if tpl:
+        body = render_template(tpl.text, ctx)
+    else:
+        body = (
+            f"Здравствуйте, {ctx['full_name']}!\n\n"
+            f"Возврат средств на сумму {ctx['amount']} ₽ выполнен.\n"
+            + (f"Показ: {ctx['movie']}\n" if ctx['movie'] else "")
+            + "\nСпасибо, что были с нами!"
+        )
+    subject = "Возврат средств выполнен — Кино на крыше"
+
+    # Прикрепляем чек, если админ его загрузил и файл на месте.
+    attach_path: Path | None = None
+    if rr.receipt_file_url:
+        rel = rr.receipt_file_url.lstrip("/")
+        if rel.startswith("uploads/"):
+            rel = rel[len("uploads/"):]
+        p = UPLOAD_DIR / rel
+        if p.exists():
+            attach_path = p
+
+    if attach_path is not None:
+        ext = attach_path.suffix.lstrip(".") or "pdf"
+        send_email_with_attachment(
+            to=to_email,
+            subject=subject,
+            body_text=body,
+            body_html=None,
+            attachment_path=attach_path,
+            attachment_name=f"refund_{rr.id}.{ext}",
+        )
+    else:
+        send_email(to_email, subject, body)
 
 
 def _absolute_refund_url(token: str) -> str:
@@ -117,10 +196,17 @@ def create_refund_request(
     )
     if not b:
         raise HTTPException(status_code=404, detail="Бронь не найдена")
-    if b.status not in (BookingStatus.cancelled.value, BookingStatus.refund_pending.value):
+    # Возврат средств уместен для: уже отменённой брони, брони в статусе «ожидает
+    # возврата», ИЛИ брони с отменённого показа (needs_cancel_resolution=True —
+    # статус всё ещё paid/paid_by_balance, но показ отменён и ждёт решения).
+    allowed = (
+        b.status in (BookingStatus.cancelled.value, BookingStatus.refund_pending.value)
+        or b.needs_cancel_resolution
+    )
+    if not allowed:
         raise HTTPException(
             status_code=400,
-            detail="Запрос на возврат создаётся только для отменённой брони или брони в статусе «ожидает возврата»",
+            detail="Возврат средств создаётся для отменённой брони, брони с отменённого показа или брони, ожидающей возврата",
         )
 
     existing = db.query(RefundRequest).filter(RefundRequest.booking_id == b.id).first()
@@ -272,16 +358,21 @@ def admin_fill_refund(
     "/api/admin/refund-requests/{rr_id}/mark-completed",
     response_model=RefundRequestOut,
 )
-def mark_completed(
+async def mark_completed(
     rr_id: int,
+    file: UploadFile | None = File(default=None),
     db: Session = Depends(get_db),
     admin: User = Depends(require_perm("manage_refunds")),
 ):
+    """Отмечает возврат выполненным. Необязательно можно прикрепить чек о переводе
+    (PDF/изображение) — он уйдёт во вложении в письме пользователю.
+    После отметки пользователю шлётся уведомление по шаблону refund_completed."""
     rr = (
         db.query(RefundRequest)
         .options(
             joinedload(RefundRequest.booking).joinedload(Booking.screening).joinedload(Screening.movie),
-            joinedload(RefundRequest.booking).joinedload(Booking.screening).joinedload(Screening.rooftop),
+            joinedload(RefundRequest.booking).joinedload(Booking.screening).joinedload(Screening.rooftop).joinedload(Rooftop.city),
+            joinedload(RefundRequest.booking).joinedload(Booking.items),
         )
         .filter(RefundRequest.id == rr_id)
         .first()
@@ -290,6 +381,23 @@ def mark_completed(
         raise HTTPException(status_code=404, detail="Запрос не найден")
     if rr.status == RefundRequestStatus.completed.value:
         raise HTTPException(status_code=400, detail="Уже выполнен")
+
+    # Необязательный чек о переводе
+    if file is not None and file.filename:
+        ext = file.filename.rsplit(".", 1)[1].lower() if "." in file.filename else ""
+        if ext == "jpeg":
+            ext = "jpg"
+        if ext not in _RECEIPT_EXT:
+            raise HTTPException(status_code=400, detail=f"Поддерживаются: {', '.join(sorted(_RECEIPT_EXT))}")
+        data = await file.read()
+        if len(data) > _RECEIPT_MAX:
+            raise HTTPException(status_code=413, detail="Файл слишком большой (макс 10 МБ)")
+        if len(data) == 0:
+            raise HTTPException(status_code=400, detail="Файл пустой")
+        name = f"refund_{rr.id}_{secrets.token_urlsafe(8)}.{ext}"
+        (UPLOAD_DIR / name).write_bytes(data)
+        rr.receipt_file_url = f"/uploads/{name}"
+
     rr.status = RefundRequestStatus.completed.value
     rr.completed_at = datetime.utcnow()
     rr.completed_by_admin_id = admin.id
@@ -297,6 +405,11 @@ def mark_completed(
         rr.booking.status = BookingStatus.refunded.value
     db.commit()
     db.refresh(rr)
+
+    try:
+        _send_refund_completed_email(db, rr)
+    except Exception:
+        pass
     return _to_admin_out(rr)
 
 

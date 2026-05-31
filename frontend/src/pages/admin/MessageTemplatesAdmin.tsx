@@ -18,6 +18,7 @@ const KIND_ORDER: MessageTemplateKind[] = [
   "user_cancel_notice",
   "admin_cancel_screening",
   "refund_link",
+  "refund_completed",
   "custom",
 ];
 
@@ -53,6 +54,7 @@ const KIND_HINTS: Record<MessageTemplateKind, string> = {
   user_cancel_notice: "Письмо, которое уйдёт пользователю при отмене его брони.",
   admin_cancel_screening: "Уведомление всем гостям при отмене показа целиком.",
   refund_link: "Сопроводительный текст к ссылке на форму ввода реквизитов для возврата.",
+  refund_completed: "Уведомление о выполненном возврате средств — отправляется при отметке «выполнено». Если админ приложил чек о переводе, он уйдёт во вложении автоматически (в тексте указывать не нужно). Доступны: {full_name}, {city}, {movie}, {items}, {amount}.",
   custom: "Произвольные шаблоны на свои нужды.",
 };
 

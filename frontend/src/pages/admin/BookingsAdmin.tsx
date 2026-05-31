@@ -10,6 +10,11 @@ const fmt = (iso: string) =>
   new Date(iso).toLocaleString("ru-RU", { dateStyle: "medium", timeStyle: "short" });
 
 const ACTIVE_STATUSES = new Set(["waiting_payment", "paid", "paid_by_balance"]);
+// «Завершённые»: гости, которые оплатили и пришли, не пришли, а также отменённые/
+// истёкшие/возвраты — всё, что уже не в активной работе.
+const COMPLETED_STATUSES = new Set([
+  "attended", "no_show", "refunded", "cancelled", "expired", "refund_pending",
+]);
 type Tab = "active" | "completed";
 
 function isActiveScreening(s: Screening) {
@@ -29,6 +34,8 @@ export default function BookingsAdmin() {
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(false);
   const [, force] = useState(0);
+  // На активной вкладке — показывать дополнительно завершённые/отменённые/истёкшие
+  const [showExtra, setShowExtra] = useState(false);
 
   useEffect(() => {
     api.get<Screening[]>("/api/screenings?include_inactive=true").then(setScreenings);
@@ -60,15 +67,19 @@ export default function BookingsAdmin() {
       if (q.trim()) params.set("q", q.trim());
       const bs = await api.get<Booking[]>(`/api/bookings?${params.toString()}`);
       setAllBookings(bs);
-      const filtered = bs.filter((b) =>
-        tab === "active" ? ACTIVE_STATUSES.has(b.status) : !ACTIVE_STATUSES.has(b.status)
-      );
+      const filtered = bs.filter((b) => {
+        if (tab === "active") {
+          // активные всегда; с галочкой — плюс завершённые/отменённые
+          return ACTIVE_STATUSES.has(b.status) || (showExtra && COMPLETED_STATUSES.has(b.status));
+        }
+        return COMPLETED_STATUSES.has(b.status);
+      });
       setBookings(filtered);
     } finally {
       setLoading(false);
     }
   }
-  useEffect(() => { reload(); }, [screeningId, tab]); // eslint-disable-line
+  useEffect(() => { reload(); }, [screeningId, tab, showExtra]); // eslint-disable-line
 
   useBookingsWs(screeningId, reload);
   useEffect(() => { const t = setInterval(() => force((x) => x + 1), 1000); return () => clearInterval(t); }, []);
@@ -84,8 +95,8 @@ export default function BookingsAdmin() {
 
   // Статистика по выбранному показу — занятость мест и оплаченная выручка.
   // Считается из allBookings, поэтому не зависит от выбранной вкладки.
-  const SEAT_HOLDING_STATUSES = new Set(["waiting_payment", "paid", "paid_by_balance", "attended"]);
-  const PAID_STATUSES = new Set(["paid", "paid_by_balance", "attended"]);
+  const SEAT_HOLDING_STATUSES = new Set(["waiting_payment", "paid", "paid_by_balance", "attended", "no_show"]);
+  const PAID_STATUSES = new Set(["paid", "paid_by_balance", "attended", "no_show"]);
   const screeningStats = useMemo(() => {
     if (!selectedScreening) return null;
     // По каждому типу мест: сколько забронировано (в активных/оплаченных бронях)
@@ -458,6 +469,18 @@ export default function BookingsAdmin() {
             <label>Поиск по ФИО / email / коду брони</label>
             <input value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") reload(); }} />
           </div>
+
+          {tab === "active" && (
+            <label className="row gap" style={{ alignItems: "center", cursor: "pointer", fontSize: 13, marginBottom: 4 }}>
+              <input
+                type="checkbox"
+                checked={showExtra}
+                onChange={(e) => setShowExtra(e.target.checked)}
+                style={{ width: "auto" }}
+              />
+              Показать также завершённые брони (истёкшие, отменённые, возвраты, не пришедшие)
+            </label>
+          )}
 
           {loading ? (
             <div style={{ marginTop: 12 }}>
