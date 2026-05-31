@@ -9,12 +9,19 @@ import { useUI } from "../../ui";
 const fmt = (iso: string) =>
   new Date(iso).toLocaleString("ru-RU", { dateStyle: "medium", timeStyle: "short" });
 
-const ACTIVE_STATUSES = new Set(["waiting_payment", "paid", "paid_by_balance"]);
+// Что показываем на вкладке «Актуальные» по умолчанию. attended/no_show включены,
+// потому что гостей отмечают на входе ещё ДО начала показа (когда показ ещё «активный»):
+// без этого отмеченные/неявившиеся гости пропадали бы из таблицы до окончания показа.
+const ACTIVE_STATUSES = new Set([
+  "waiting_payment", "paid", "paid_by_balance", "attended", "no_show",
+]);
 // «Завершённые»: гости, которые оплатили и пришли, не пришли, а также отменённые/
-// истёкшие/возвраты — всё, что уже не в активной работе.
+// истёкшие/возвраты — всё, что уже не требует действий.
 const COMPLETED_STATUSES = new Set([
   "attended", "no_show", "refunded", "cancelled", "expired", "refund_pending",
 ]);
+// Завершающие статусы, которые на «Актуальной» вкладке показываем только по галочке.
+const EXTRA_ON_ACTIVE = new Set(["refunded", "cancelled", "expired", "refund_pending"]);
 type Tab = "active" | "completed";
 
 function isActiveScreening(s: Screening) {
@@ -69,8 +76,9 @@ export default function BookingsAdmin() {
       setAllBookings(bs);
       const filtered = bs.filter((b) => {
         if (tab === "active") {
-          // активные всегда; с галочкой — плюс завершённые/отменённые
-          return ACTIVE_STATUSES.has(b.status) || (showExtra && COMPLETED_STATUSES.has(b.status));
+          // активные (вкл. пришедших/неявившихся) всегда; с галочкой — плюс
+          // отменённые/истёкшие/возвраты
+          return ACTIVE_STATUSES.has(b.status) || (showExtra && EXTRA_ON_ACTIVE.has(b.status));
         }
         return COMPLETED_STATUSES.has(b.status);
       });

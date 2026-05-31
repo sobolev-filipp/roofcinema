@@ -223,6 +223,7 @@ export type RefundRequest = {
   payout_bank: string | null;
   payout_comment: string | null;
   receipt_file_url: string | null;
+  payout_token: string;
   created_at: string;
   link_sent_at: string | null;
   filled_at: string | null;

@@ -412,6 +412,7 @@ class RefundRequestOut(BaseModel):
     payout_bank: str | None = None
     payout_comment: str | None = None
     receipt_file_url: str | None = None
+    payout_token: str = ""  # для построения ссылки /refund/{token} на фронте
     created_at: datetime
     link_sent_at: datetime | None = None
     filled_at: datetime | None = None

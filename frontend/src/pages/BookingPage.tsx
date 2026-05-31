@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, type Booking, type Screening } from "../api";
 import { useAuth } from "../auth";
+import AdminCustomerBox from "../components/AdminCustomerBox";
 import AdminTemplateCopyBox from "../components/AdminTemplateCopyBox";
 import BalancePaymentBox from "../components/BalancePaymentBox";
 import BookingAttendeesBox from "../components/BookingAttendeesBox";
@@ -75,6 +76,10 @@ export default function BookingPage() {
   const isWaiting = booking.status === "waiting_payment";
   const isPaid = booking.status === "paid" || booking.status === "paid_by_balance" || booking.status === "attended";
   const isAdmin = user?.role === "super_admin" || user?.role === "admin";
+  // Админ смотрит ЧУЖУЮ бронь (зашёл из раздела «Бронирования» по клику на ФИО):
+  // прячем «мои брони/мой QR» и показываем карточку клиента + историю.
+  const isOwnBooking = !!user && booking.user_id === user.id;
+  const adminViewingOther = isAdmin && !isOwnBooking;
   const pendingReceipt = booking.receipts.find((r) => r.status === "pending") ?? null;
   // Пока чек на проверке — таймер заморожен. После reject backend продлит expires_at
   // на длительность проверки, и отсчёт продолжится с того же значения.
@@ -143,7 +148,9 @@ export default function BookingPage() {
 
   return (
     <div className="container" style={{ maxWidth: 720 }}>
-      <button className="ghost" onClick={() => nav("/bookings")}>← К моим броням</button>
+      <button className="ghost" onClick={() => nav(adminViewingOther ? "/admin/bookings" : "/bookings")}>
+        {adminViewingOther ? "← К бронированиям" : "← К моим броням"}
+      </button>
 
       <div className="card" style={{ marginTop: 16 }}>
         <div className="row between" style={{ flexWrap: "wrap", gap: 12 }}>
@@ -402,10 +409,14 @@ export default function BookingPage() {
             <div style={{ flex: 1, minWidth: 220 }}>
               <h3 style={{ margin: 0 }}>Бронь оплачена</h3>
               <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>
-                Точный адрес крыши открыт на её странице. Для прохода покажите QR-код или назовите код ниже.
+                {adminViewingOther
+                  ? "Бронь гостя оплачена. Код для входа — внизу страницы."
+                  : "Точный адрес крыши открыт на её странице. Для прохода покажите QR-код или назовите код ниже."}
               </div>
             </div>
-            <Link to="/profile/tickets" className="btn-as-link primary">Открыть мой QR-код →</Link>
+            {!adminViewingOther && (
+              <Link to="/profile/tickets" className="btn-as-link primary">Открыть мой QR-код →</Link>
+            )}
           </div>
           {user && booking.user_id === user.id && booking.status !== "attended" && (
             <div className="row gap" style={{ marginTop: 12, justifyContent: "flex-end" }}>
@@ -418,6 +429,8 @@ export default function BookingPage() {
       )}
 
       {isAdmin && <AdminTemplateCopyBox booking={booking} />}
+
+      {adminViewingOther && <AdminCustomerBox booking={booking} />}
 
       {user && booking.user_id === user.id && (
         <BookingAttendeesBox booking={booking} onChange={setBooking} />

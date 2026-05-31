@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type RefundRequest, type RefundRequestStatus } from "../../api";
 import { Skeleton } from "../../components/Loaders";
+import { parseUtc } from "../../lib/bookingStatus";
 import { useUI } from "../../ui";
 
 type Tab = RefundRequestStatus;
@@ -12,6 +13,11 @@ const TAB_LABEL: Record<Tab, string> = {
   completed: "Возвраты выполнены",
 };
 
+// Время событий (создан/ссылка/реквизиты/выполнен) хранится в UTC (datetime.utcnow()),
+// поэтому парсим как UTC и показываем в локальном поясе браузера.
+const fmtUtc = (iso: string | null | undefined) =>
+  iso ? parseUtc(iso).toLocaleString("ru-RU", { dateStyle: "medium", timeStyle: "short" }) : "—";
+// Время начала показа — наивное локальное время крыши, его показываем как есть.
 const fmt = (iso: string | null | undefined) =>
   iso ? new Date(iso).toLocaleString("ru-RU", { dateStyle: "medium", timeStyle: "short" }) : "—";
 
@@ -52,7 +58,12 @@ export default function RefundsAdmin() {
   useEffect(() => { reload(); }, [tab]); // eslint-disable-line
 
   function copyLink(r: RefundRequest) {
-    navigator.clipboard.writeText(r.payout_url).then(
+    // Строим ссылку от текущего домена админки, а не от payout_url с бэкенда
+    // (на сервере APP_BASE_URL мог быть не настроен → там попадал localhost).
+    const link = r.payout_token
+      ? `${window.location.origin}/refund/${r.payout_token}`
+      : r.payout_url;
+    navigator.clipboard.writeText(link).then(
       () => { setCopied(r.id); setTimeout(() => setCopied(null), 2000); },
       () => notify({ title: "Не удалось скопировать", message: "Браузер запретил доступ к буферу.", kind: "error" }),
     );
@@ -174,10 +185,10 @@ export default function RefundsAdmin() {
                     {Number(r.amount).toFixed(0)} ₽
                   </div>
                   <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
-                    создан {fmt(r.created_at)}
-                    {r.link_sent_at && ` · ссылка ушла ${fmt(r.link_sent_at)}`}
-                    {r.filled_at && ` · реквизиты ${fmt(r.filled_at)}`}
-                    {r.completed_at && ` · выполнен ${fmt(r.completed_at)}`}
+                    создан {fmtUtc(r.created_at)}
+                    {r.link_sent_at && ` · ссылка ушла ${fmtUtc(r.link_sent_at)}`}
+                    {r.filled_at && ` · реквизиты ${fmtUtc(r.filled_at)}`}
+                    {r.completed_at && ` · выполнен ${fmtUtc(r.completed_at)}`}
                   </div>
                 </div>
 
